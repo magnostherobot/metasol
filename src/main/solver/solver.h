@@ -26,7 +26,11 @@ public:
     };
 
     struct result {
+#ifdef C2NIM
+	enum type { TIMEOUT, SOLVED, UNSOLVABLE, MEM_LIMIT, TERMINATED };
+#else
         enum class type { TIMEOUT, SOLVED, UNSOLVABLE, MEM_LIMIT, TERMINATED };
+#endif
 
         type sol_type;
         uint64_t states_searched;

@@ -39,6 +39,8 @@ public:
     game_state(const sol_rules&, int seed, streamliner_options);
     // Does the same but with an initialiser list (useful for testing)
     game_state(const sol_rules&, std::initializer_list<std::initializer_list<std::string>>);
+    // Does the same but with vectors
+    game_state(const sol_rules&, std::vector<std::vector<std::string>>);
 
     /* Altering state */
 

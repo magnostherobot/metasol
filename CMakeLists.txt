@@ -16,6 +16,7 @@ check_ipo_supported(RESULT supported OUTPUT error)
 
 set(main src/main/main.cpp)
 set(sources src/main/input-output/input/command_line_helper.cpp
+        src/main/api.cpp
         src/main/input-output/input/command_line_helper.h
         src/main/input-output/output/log_helper.h
         src/main/game/card.h
@@ -161,6 +162,11 @@ endif()
 add_executable(solvitaire ${main} ${sources})
 set_property(TARGET solvitaire PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE) # For -flto flag
 target_link_libraries(solvitaire LINK_PUBLIC ${Boost_LIBRARIES})
+
+add_library(api STATIC ${sources})
+set_target_properties(api PROPERTIES PUBLIC_HEADER src/main/api.h)
+set_property(TARGET api PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE) # For -flto flag
+target_link_libraries(api LINK_PUBLIC ${Boost_LIBRARIES})
 
 # add a separete executable for the 'no pile symmetry' version of the solver
 #add_executable(solvitaire-no-pile-symmetry ${main} ${sources})

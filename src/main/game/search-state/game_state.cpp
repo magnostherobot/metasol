@@ -284,6 +284,28 @@ game_state::game_state(const sol_rules& s_rules,
     }
 }
 
+game_state::game_state(const sol_rules& s_rules,
+                       std::vector<std::vector<string>> vec)
+        : game_state(s_rules, sos::NONE) {pile::ref pr = 0;
+    for (auto& p_vec : vec) {
+        for (const string& card_str : p_vec) {
+            card c(card_str.c_str(), s_rules.face_up == fu::TOP_CARDS);
+            place_card(pr, c);
+        }
+        pr++;
+    }
+
+    // Sets foundations base appropriately
+    if (rules.foundations_present && rules.foundations_base == boost::none) {
+        for (auto f : foundations) {
+            if (!piles[f].empty()) {
+                foundations_base = piles[f].top_card().get_rank();
+                return;
+            }
+        }
+    }
+}
+
 // Generates a randomly ordered vector of cards
 vector<card> game_state::gen_shuffled_deck(card::rank_t max_rank,
                                            bool two_decks, mt19937 rng) {
