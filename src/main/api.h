@@ -7,15 +7,8 @@
 #include "game/sol_rules.h"
 #include "game/card.h"
 
-// just for now, until I construct my own rules stuff:
-#include "input-output/input/json-parsing/rules_parser.h"
-
 typedef std::vector<std::vector<std::string>> piles;
 typedef std::vector<move> movelist;
-
-enum finished_state {
-    SOLUTION_FOUND, NO_SOLUTION, TIMEOUT, SOLVER_OOM, CANCELLED
-};
 
 class game_state {
     public:

@@ -5,8 +5,8 @@ LDFLAGS = -ggdb3 -O0 -Lcmake-build-release #-DNOTHREAD
 OUTPUT_OPTION = -MMD -MP -o $@
 LDLIBS = -lapi -lpthread
 
-TRGT = metasol
-SRC = metasol.cpp
+TRGT = centre
+SRC = metasol.cpp centre.cpp
 OBJ = $(SRC:.cpp=.o)
 DEP = $(SRC:.cpp=.d)
 
