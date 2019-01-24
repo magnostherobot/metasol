@@ -61,7 +61,7 @@ solver::node::node(const move m)
 
 solver::result solver::run(boost::optional<millisec> timeout) {
     // Set interrupt handler
-    signal(SIGINT, sigint_handler);
+    /* signal(SIGINT, sigint_handler); */
 
     // Set timings
     const clock::time_point start_time = clock::now();

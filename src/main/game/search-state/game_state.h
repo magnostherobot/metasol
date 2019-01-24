@@ -41,6 +41,10 @@ public:
     game_state(const sol_rules&, std::initializer_list<std::initializer_list<std::string>>);
     // Does the same but with vectors
     game_state(const sol_rules&, std::vector<std::vector<std::string>>);
+    // Does the same but with lots of vectors
+    game_state(const sol_rules&, std::vector<std::vector<card::suit_t>>,
+               std::vector<std::vector<card::rank_t>>,
+               std::vector<std::vector<bool>>);
 
     /* Altering state */
 

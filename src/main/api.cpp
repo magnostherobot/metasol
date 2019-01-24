@@ -1,14 +1,21 @@
 #include <cstdint>
+
 #include <vector>
 #include <string>
+
+#include <stdio.h>
 
 #include "game/move.h"
 #include "game/search-state/game_state.h"
 #include "solver/solver.h"
 
-bool get_moves(std::vector<move>& moves, game_state& gs,
+enum finished_state {
+    SOLUTION_FOUND, NO_SOLUTION, TIMEOUT, SOLVER_OOM, CANCELLED
+};
+
+finished_state get_moves(std::vector<move>& moves, game_state& gs,
         uint64_t cache_capacity, uint64_t timeout);
-bool get_moves(std::vector<move>& moves, game_state& gs,
+finished_state get_moves(std::vector<move>& moves, game_state& gs,
         uint64_t cache_capacity, uint64_t timeout) {
     moves.clear();
 
@@ -19,8 +26,21 @@ bool get_moves(std::vector<move>& moves, game_state& gs,
         for (auto &it : nodes) {
             moves.push_back(it.mv);
         }
-        return true;
-    } else {
-        return false;
+    }
+
+    switch (res.sol_type) {
+        case solver::result::type::SOLVED:
+            return SOLUTION_FOUND;
+        case solver::result::type::UNSOLVABLE:
+            return NO_SOLUTION;
+        case solver::result::type::TIMEOUT:
+            return TIMEOUT;
+        case solver::result::type::MEM_LIMIT:
+            return SOLVER_OOM;
+        case solver::result::type::TERMINATED:
+            return CANCELLED;
+        default:
+            assert(false);
+            return NO_SOLUTION;
     }
 }

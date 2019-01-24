@@ -5,6 +5,7 @@
 
 #include "game/move.h"
 #include "game/sol_rules.h"
+#include "game/card.h"
 
 // just for now, until I construct my own rules stuff:
 #include "input-output/input/json-parsing/rules_parser.h"
@@ -12,9 +13,20 @@
 typedef std::vector<std::vector<std::string>> piles;
 typedef std::vector<move> movelist;
 
+enum finished_state {
+    SOLUTION_FOUND, NO_SOLUTION, TIMEOUT, SOLVER_OOM, CANCELLED
+};
+
 class game_state {
     public:
     game_state(const sol_rules&, piles);
+    game_state(const sol_rules&,
+            std::vector<std::vector<card::suit_t>>,
+            std::vector<std::vector<card::rank_t>>,
+            std::vector<std::vector<bool>>);
+
+    bool is_solved() const;
+
     enum class streamliner_options {NONE, AUTO_FOUNDATIONS, SUIT_SYMMETRY, BOTH};
     void make_move(move);
 
@@ -62,5 +74,5 @@ class game_state {
  *
  * Returns true if a solution was found; false otherwise.
  */
-bool get_moves(movelist& moves, game_state& gs, uint64_t cache_capacity,
-        uint64_t timeout);
+finished_state get_moves(movelist& moves, game_state& gs,
+        uint64_t cache_capacity, uint64_t timeout);
