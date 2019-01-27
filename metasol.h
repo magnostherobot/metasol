@@ -94,12 +94,14 @@ typedef struct ms_game_state {
     std::vector<ms_card_pile> tableau;
     ms_card_pile hole;
     std::vector<ms_card_pile> cells;
+    ms_card_pile reserve;
 } ms_game_state;
 
 typedef struct ms_move {
     bool stock;
-    ms_card_pile *to;
-    ms_card_pile *from;
+    unsigned to;
+    unsigned from;
+    unsigned size;
 } ms_move;
 
 enum finished_state {
@@ -108,8 +110,8 @@ enum finished_state {
 
 typedef finished_state thoughtful_run_func_t(ms_game_state *,
         ms_rules *, void *);
-typedef finished_state run_func_t(ms_game_state *, ms_rules *, ms_move *,
-        unsigned, void *);
+typedef finished_state run_func_t(ms_game_state *, ms_rules *,
+        std::vector<ms_move> *, unsigned, void *);
 typedef bool solved_func_t(ms_game_state *, ms_rules *, void *);
 
 typedef struct ms_settings {
@@ -118,6 +120,8 @@ typedef struct ms_settings {
     solved_func_t *solved_func;
     unsigned reserved_move_count;
     void *user_data;
+    unsigned max_concurrent_threads;
+    unsigned max_votes;
 } ms_settings;
 
 unsigned foundation_count(ms_rules *r);
@@ -129,18 +133,15 @@ struct thread_info {
     ms_game_state *gs;
     ms_rules *r;
     ms_settings *s;
-    ms_move *move_buf;
+    std::vector<ms_move> *move_buf;
     finished_state *result;
 };
-
-const int MAX_VOTES = 100;
-const int MIN_VOTES = 50;
 
 ms_rules fetch_default_rules();
 ms_settings fetch_default_settings();
 
 ms_game_state random_game_state(ms_rules *, ms_settings *);
 
-void ms_run(ms_game_state *, ms_rules *, ms_settings *);
+int ms_run(ms_game_state *, ms_rules *, ms_settings *);
 
 #endif /* METASOL_H */

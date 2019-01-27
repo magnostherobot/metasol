@@ -1,7 +1,8 @@
 #include <iostream>
+#include <algorithm>
 
 #include "metasol.h"
-#include "src/main/api.h"
+#include "solvitaire/headers/api.h"
 
 sol_rules::build_policy convert_build_policy(build_policy_t bp) {
     switch (bp) {
@@ -129,17 +130,20 @@ sol_rules convert_rules(ms_rules *sr) {
     assert(sr->deck_count <= 2);
     r.two_decks = sr->deck_count == 2;
 
-    if (sr->specific_foundations_base)
+    if (sr->specific_foundations_base) {
         r.foundations_base = sr->foundations_base;
-    else
-        r.foundations_base = boost::optional<card::rank_t>{};
+    } else {
+        r.foundations_base = boost::none;
+    }
 
-    for (auto &p : sr->accordion_moves)
+    for (auto &p : sr->accordion_moves) {
         r.accordion_moves.push_back(std::pair<sol_rules::direction, uint8_t>
                 (convert_direction(p.first), p.second));
+    }
 
-    for (auto &x : sr->accordion_policy)
+    for (auto &x : sr->accordion_policy) {
         r.accordion_pol.push_back(convert_accordion_policy(x));
+    }
 
     return r;
 }
@@ -258,7 +262,9 @@ game_state convert_game_state(ms_game_state *sgs, ms_rules *r) {
             convert_game_state_pile(&sgs->waste, &suits, &ranks, &face_down);
         }
     }
-    // TODO: how does the reserve work? leaving empty for now
+    if (r->reserve_size) {
+        convert_game_state_pile(&sgs->reserve, &suits, &ranks, &face_down);
+    }
     // TODO: how does the accordion work? leaving empty for now
     convert_game_state_pile_set(&sgs->tableau, &suits, &ranks, &face_down);
     // TODO: how does the sequence work? leaving empty for now
@@ -288,43 +294,85 @@ bool goes_through_stock(move *a) {
         && a->count != 0;
 }
 
-int convert_move(ms_game_state *gs, move *m, ms_move *sm) {
+unsigned get_waste_index(ms_rules *r) {
+    assert(r->stock_deal_method == STOCK_TO_WASTE);
+
+    unsigned i = 1;
+    if (r->hole_present) {
+        ++i;
+    }
+
+    if (r->foundations_present) {
+        i += 4 * r->deck_count;
+    }
+
+    i += r->cells;
+
+    return i;
+}
+
+int convert_move(ms_game_state *gs, ms_rules *r, move *m, ms_move *sm) {
     sm->stock = goes_through_stock(m);
 
     if (m->type == move::mtype::stock_k_plus) {
-        sm->from = &gs->waste;
+        sm->from = get_waste_index(r);
+
+        // if the move is a k+ move, then this value only matters if it doesn't
+        // go through the stock, in which case `m->count == 0` but we want it to
+        // move one card from the waste.
+        sm->size = 1;
     } else {
-        sm->from = get_pile_by_index(gs, m->from);
+        sm->from = m->from;
+        sm->size = m->count;
     }
 
-    sm->to = get_pile_by_index(gs, m->to);
+    sm->to = m->to;
 
     return 0;
+}
+
+finished_state convert_result(solver::result::type r) {
+    switch (r) {
+        case solver::result::type::SOLVED:
+            return SOLUTION_FOUND;
+        case solver::result::type::UNSOLVABLE:
+            return NO_SOLUTION;
+        case solver::result::type::TIMEOUT:
+        case solver::result::type::MEM_LIMIT:
+        case solver::result::type::TERMINATED:
+            return CANCELLED;
+        default:
+            assert(false);
+    }
 }
 
 /**
  * The function that is called by every voter, to get its vote.
  */
 finished_state run_single(ms_game_state *gs, ms_rules *r,
-        ms_move *first_move, unsigned move_count, void *data) {
-    // TODO: this function can't currently handle producing multiple moves at
-    // once
-    assert(move_count == 1u);
-
+        std::vector<ms_move> *moves, unsigned move_count, void *data) {
     user_data *d = (user_data *) data;
 
     game_state solv_gs = convert_game_state(gs, r);
 
     movelist ml;
-    finished_state result = get_moves(ml, solv_gs, d->run_cache_size,
-            d->run_timeout);
+    finished_state result = convert_result(get_moves(ml, solv_gs,
+                d->run_cache_size, d->run_timeout));
 
     if (result == SOLUTION_FOUND) {
-        if (!is_dud_move(&ml[0])) {
-            convert_move(gs, &ml[0], first_move);
-        } else {
-            convert_move(gs, &ml[1], first_move);
-        }
+        unsigned n = std::min(move_count, (unsigned) ml.size());
+        moves->clear();
+        moves->resize(n);
+        int skip_first = is_dud_move(&ml[0]) ? 1 : 0;
+        std::transform(ml.begin() + skip_first,
+                ml.begin() + skip_first + move_count,
+                moves->begin(),
+                [gs, r](move m) -> ms_move {
+                    ms_move out;
+                    convert_move(gs, r, &m, &out);
+                    return out;
+                });
+        std::reverse(moves->begin(), moves->end());
     }
 
     return result;
@@ -338,7 +386,8 @@ finished_state thoughtful_run(ms_game_state *gs, ms_rules *r,
 
     game_state solv_gs = convert_game_state(gs, r);
     movelist ml;
-    return get_moves(ml, solv_gs, d->run_cache_size, d->thoughtful_run_timeout);
+    return convert_result(get_moves(ml, solv_gs, d->run_cache_size,
+                d->thoughtful_run_timeout));
 }
 
 ms_rules fortunes_favor() {
@@ -355,6 +404,73 @@ ms_rules fortunes_favor() {
     return r;
 }
 
+ms_rules klondike() {
+    ms_rules r = fetch_default_rules();
+
+    r.tableau_size = 7u;
+    r.build_policy = BUILD_ALTERNATING;
+    r.spaces_policy = KINGS_FILL_SPACE;
+    r.move_built_group = CAN_MOVE_BUILT_GROUP;
+    r.built_group_policy = r.build_policy;
+
+    r.diagonal_deal = true;
+    r.face_up_policy = TOP_CARDS_FACE_UP;
+
+    r.foundations_removable = true;
+
+    r.stock_size = 24u;
+    r.stock_deal_count = 3u;
+    r.stock_redeal = true;
+
+    return r;
+}
+
+ms_rules canfield() {
+    ms_rules r = fetch_default_rules();
+
+    r.tableau_size = 4u;
+    r.build_policy = BUILD_ALTERNATING;
+    r.move_built_group = CAN_MOVE_WHOLE_PILE;
+    r.spaces_policy = AUTO_RESERVE_THEN_WASTE;
+    r.built_group_policy = r.build_policy;
+
+    r.foundations_init_cards = ONE_FOUNDATION_INIT;
+    r.specific_foundations_base = false;
+
+    r.stock_size = 34u;
+    r.stock_deal_count = 3u;
+    r.stock_redeal = true;
+
+    r.reserve_size = 13u;
+    r.reserve_stacked = true;
+
+    return r;
+}
+
+ms_rules simple_canfield() {
+    ms_rules r = fetch_default_rules();
+
+    r.tableau_size = 3u;
+    r.build_policy = BUILD_ALTERNATING;
+    r.move_built_group = CAN_MOVE_WHOLE_PILE;
+    r.spaces_policy = AUTO_RESERVE_THEN_WASTE;
+    r.built_group_policy = r.build_policy;
+
+    r.foundations_init_cards = ONE_FOUNDATION_INIT;
+    r.specific_foundations_base = false;
+
+    r.stock_size = 6u;
+    r.stock_deal_count = 3u;
+    r.stock_redeal = true;
+
+    r.reserve_size = 2;
+    r.reserve_stacked = true;
+
+    r.max_rank = 3u;
+
+    return r;
+}
+
 bool solved(ms_game_state *gs, ms_rules *r, void *d) {
     return convert_game_state(gs, r).is_solved();
 }
@@ -366,9 +482,11 @@ ms_settings get_settings(user_data *d) {
     s.thoughtful_run_func = &thoughtful_run;
     s.solved_func = &solved;
 
-    s.reserved_move_count = 1u;
+    s.reserved_move_count = 10u;
+    s.max_concurrent_threads = 24u;
+    s.max_votes = 1000u;
 
-    s.user_data = d;
+    s.user_data = (void *) d;
 
     return s;
 }
@@ -377,17 +495,17 @@ user_data get_user_data() {
     user_data d;
 
     d.run_cache_size = 1024u;
-    d.run_timeout = 3000u;
-    d.thoughtful_run_timeout = 10000u;
+    d.run_timeout = 20000u;
+    d.thoughtful_run_timeout = 20000u;
 
     return d;
 }
 
 int main() {
-    ms_rules r = fortunes_favor();
+    ms_rules r = klondike();
     user_data d = get_user_data();
     ms_settings s = get_settings(&d);
     ms_game_state gs = random_game_state(&r, &s);
 
-    ms_run(&gs, &r, &s);
+    return ms_run(&gs, &r, &s);
 }

@@ -4,6 +4,8 @@
 
 #include <assert.h>
 
+#include "thpool/thpool.h"
+
 #include "metasol.h"
 
 #ifndef NDEBUG
@@ -21,6 +23,8 @@ ms_settings fetch_default_settings() {
     s.solved_func = NULL;
     s.reserved_move_count = 1u;
     s.user_data = NULL;
+    s.max_concurrent_threads = 4u;
+    s.max_votes = 100u;
     return s;
 }
 
@@ -98,10 +102,10 @@ void add_hidden(ms_card *c, std::vector<ms_card *> &cs) {
  * Fills a vector with pointers to all hidden cards in the given game state.
  */
 int get_hidden_cards(ms_game_state *gs, std::vector<ms_card *> &cs) {
-    // TODO: include reserve, cells, accordion
+    // TODO: include cells, accordion
     for (auto &c : gs->stock)   add_hidden(&c, cs);
     for (auto &c : gs->waste)   add_hidden(&c, cs);
-    /* for (ms_card &c : gs->reserve) add_hidden(&c, cs); */
+    for (auto &c : gs->reserve) add_hidden(&c, cs);
 
     for (ms_card_pile &p : gs->foundations)
         for (ms_card &c : p)
@@ -128,14 +132,16 @@ unsigned total_pile_count(ms_rules *r) {
         + r->cells
         + (r->stock_size > 0 ?
             (r->stock_deal_method == STOCK_TO_WASTE ? 2 : 1) : 0)
+        + (r->reserve_size > 0 ? 1 : 0)
     ;
 
-    // TODO: I'm not sure how the reserve, sequence, or accordion work;
+    // TODO: I'm not sure how the sequence, or accordion work;
     // research required!
 }
 
 std::random_device rd;
-auto rng = std::default_random_engine{rd()};
+auto seed = static_cast<long unsigned int>(time(0));
+auto rng = std::default_random_engine{seed};
 
 int shuffle_hidden(ms_game_state *gs) {
     std::vector<ms_card *> hidden_card_pointers;
@@ -156,23 +162,38 @@ int shuffle_hidden(ms_game_state *gs) {
     return 0;
 }
 
-ms_card_pile *get_pile_by_index(ms_game_state *gs, uint8_t i) {
+ms_card_pile *get_pile_by_index(ms_game_state *gs, ms_rules *r, uint8_t i) {
     if (i < gs->foundations.size()) {
         return &gs->foundations[i];
     } else {
         i -= gs->foundations.size();
     }
 
-    if (i-- == 0) {
-        return &gs->stock;
+    if (r->stock_size) {
+        if (i-- == 0) {
+            return &gs->stock;
+        }
+
+        if (r->stock_deal_method == STOCK_TO_WASTE) {
+            if (i-- == 0) {
+                return &gs->waste;
+            }
+        }
     }
 
-    if (i-- == 0) {
-        return &gs->waste;
+    if (r->reserve_size) {
+        if (i-- == 0) {
+            return &gs->reserve;
+        }
     }
 
-    assert (i < gs->tableau.size());
-    return &gs->tableau[i];
+    if (i < gs->tableau.size()) {
+        return &gs->tableau[i];
+    } else {
+        i -= gs->tableau.size();
+    }
+
+    assert(false);
 }
 
 void *run_thread(void *vargp) {
@@ -200,32 +221,58 @@ int intlen(int i) {
     return floor(log10(abs(i))) + 1;
 }
 
-int move_atop(ms_card_pile *f, ms_card_pile *t) {
-    ms_card c = f->back();
-
-    f->pop_back();
+int move_atop(ms_card_pile *f, ms_card_pile *t, unsigned count, bool *reveal) {
+    ms_card_pile temp(f->end() - count, f->end());
+    f->erase(f->end() - count, f->end());
+    t->insert(t->end(), temp.begin(), temp.end());
 
     if (!f->empty()) {
+        if (reveal) {
+            *reveal = *reveal || f->back().hidden;
+        }
         f->back().hidden = false;
     }
 
-    t->push_back(c);
+    debug("%s\n", *reveal ? "true" : "false");
+    return 0;
+}
+
+int flip_waste(ms_game_state *gs) {
+    auto temp = gs->waste;
+    gs->waste = gs->stock;
+    gs->stock = temp;
+    std::reverse(gs->stock.begin(), gs->stock.end());
 
     return 0;
 }
 
-int go_through_stock(ms_game_state *gs, int n) {
-    for (int i = 0; i < n; ++i)
-        move_atop(&gs->stock, &gs->waste);
+int go_through_stock(ms_game_state *gs, unsigned n, bool *reveal) {
+    // going through the stock is treated strangely, so recalculations are
+    // always required
+    *reveal = true;
+
+    if (gs->stock.size() == 0) {
+        flip_waste(gs);
+    }
+
+    unsigned turn_over = std::min(n, (unsigned) gs->stock.size());
+
+    for (unsigned i = 0; i < turn_over; ++i) {
+        move_atop(&gs->stock, &gs->waste, 1u, reveal);
+    }
 
     return 0;
 }
 
-int make_move(ms_game_state *gs, ms_move *m) {
+int make_move(ms_game_state *gs, ms_rules *r, ms_move *m, bool *reveal) {
+    *reveal = false;
+
     if (m->stock) {
-        go_through_stock(gs, 1);
+        go_through_stock(gs, r->stock_deal_count, reveal);
     } else {
-        move_atop(m->from, m->to);
+        ms_card_pile *from = get_pile_by_index(gs, r, m->from);
+        ms_card_pile *to = get_pile_by_index(gs, r, m->to);
+        move_atop(from, to, m->size, reveal);
     }
     return 0;
 }
@@ -241,40 +288,67 @@ char const *finished_state_str(finished_state f) {
     }
 }
 
-void run_loop(ms_game_state *gs, ms_rules *r, ms_settings *s, ms_move *votes,
-        finished_state *vote_results, pthread_t *votes_tid) {
-    struct thread_info t_infos[MAX_VOTES];
+bool opposite_move(ms_move *a, ms_move *b) {
+    if (!a || !b) {
+        return false;
+    } else if (a->stock || b->stock) {
+        return false;
+    } else if (a->from != b->to) {
+        return false;
+    } else if (a->to != b->from) {
+        return false;
+    } else if (a->size != b->size) {
+        return false;
+    } else {
+        return true;
+    }
+}
+
+void run_loop(ms_game_state *gs, ms_rules *r, ms_settings *s,
+        std::vector<ms_move> *votes, finished_state *vote_results,
+        ms_move *previous_move, bool *card_revealed_last_move,
+        threadpool *thpool, thread_info *t_infos, ms_game_state *shuffled_states
+        ) {
+
+    for (unsigned i = 0; i < s->max_votes; ++i) {
+        if (vote_results[i] == SOLUTION_FOUND
+                && !votes[i].empty()
+                && !*card_revealed_last_move) {
+            continue;
+        }
+
+        shuffled_states[i] = *gs;
+        shuffle_hidden(&shuffled_states[i]);
+
+        t_infos[i].gs = &shuffled_states[i];
+        t_infos[i].r = r;
+        t_infos[i].s = s;
+        t_infos[i].move_buf = &votes[i];
+        t_infos[i].result = &vote_results[i];
 
 #ifdef NOTHREAD
-    for (int i = 0; i < MAX_VOTES; ++i) {
-        t_infos[i].gs = gs;
-        t_infos[i].r = r;
-        t_infos[i].s = s;
-        t_infos[i].move_buf = &votes[i];
-        t_infos[i].result = &vote_results[i];
 
         run_thread(&t_infos[i]);
-    }
+
 #else
 
-    for (int i = 0; i < MAX_VOTES; ++i) {
-        t_infos[i].gs = gs;
-        t_infos[i].r = r;
-        t_infos[i].s = s;
-        t_infos[i].move_buf = &votes[i];
-        t_infos[i].result = &vote_results[i];
-
-        pthread_create(&votes_tid[i], NULL, &run_thread, &t_infos[i]);
+        thpool_add_work(*thpool, (void (*)(void *)) &run_thread,
+                (void *) &t_infos[i]);
     }
 
-    for (int i = 0; i < MAX_VOTES; ++i)
-        pthread_join(votes_tid[i], NULL);
+    thpool_wait(*thpool);
+
 #endif
 
     std::map<ms_move, int> tallied_votes;
-    for (int i = 0; i < MAX_VOTES; ++i) {
+    for (unsigned i = 0; i < s->max_votes; ++i) {
         if (vote_results[i] == SOLUTION_FOUND) {
-            ms_move vote = votes[i];
+            assert(!votes[i].empty());
+            debug("votes[%d]: %lu\n", i, votes[i].size());
+
+            ms_move vote = votes[i].back();
+            votes[i].pop_back();
+
             auto t = tallied_votes.find(vote);
             if (t == tallied_votes.end()) {
                 tallied_votes[vote] = 1;
@@ -290,7 +364,9 @@ void run_loop(ms_game_state *gs, ms_rules *r, ms_settings *s, ms_move *votes,
         ms_move move = v.first;
         int vote = v.second;
 
-        if (vote > max_votes) {
+        debug("%u->%u(%u) has %d votes\n", move.from, move.to, move.size, vote);
+
+        if (vote > max_votes) {// && !opposite_move(&move, previous_move)) {
             max_move = &move;
             max_votes = vote;
         }
@@ -300,7 +376,7 @@ void run_loop(ms_game_state *gs, ms_rules *r, ms_settings *s, ms_move *votes,
         debug("no votes cast!\n");
         std::map<finished_state, int> res;
 
-        for (int i = 0; i < MAX_VOTES; ++i) {
+        for (unsigned i = 0; i < s->max_votes; ++i) {
             finished_state f = vote_results[i];
             auto c = res.find(f);
             res[f] = (c == res.end()) ? 1 : (c->second + 1);
@@ -311,7 +387,8 @@ void run_loop(ms_game_state *gs, ms_rules *r, ms_settings *s, ms_move *votes,
             debug("%s: %d\n", finished_state_str(p.first), p.second);
         }
     } else {
-        make_move(gs, max_move);
+        make_move(gs, r, max_move, card_revealed_last_move);
+        *previous_move = *max_move;
     }
 }
 
@@ -328,18 +405,28 @@ bool solvable(ms_game_state *gs, ms_rules *r, ms_settings *s) {
     return result;
 }
 
-void ms_run(ms_game_state *gs, ms_rules *r, ms_settings *s) {
-    ms_move votes[MAX_VOTES];
-    finished_state vote_results[MAX_VOTES];
-    pthread_t votes_tid[MAX_VOTES];
+int ms_run(ms_game_state *gs, ms_rules *r, ms_settings *s) {
+#define gimme_mem(t) ((t *) malloc(sizeof(t) * s->max_votes))
+    std::vector<ms_move> *votes = gimme_mem(std::vector<ms_move>);
+    finished_state *vote_results = gimme_mem(finished_state);
+    thread_info *t_infos = gimme_mem(thread_info);
+    ms_game_state *states = gimme_mem(ms_game_state);
 
+    threadpool thpool = thpool_init(s->max_concurrent_threads);
+
+    bool reveal = true;
+    ms_move previous_move;
+    previous_move.stock = true;
     while (!s->solved_func(gs, r, s->user_data)) {
         if (s->thoughtful_run_func && !solvable(gs, r, s)) {
-            break;
+            return 1;
         }
 
-        run_loop(gs, r, s, &votes[0], &vote_results[0], &votes_tid[0]);
+        run_loop(gs, r, s, votes, vote_results, &previous_move,
+                &reveal, &thpool, t_infos, states);
     }
+    debug("successful seed: %lu\n", seed);
+    return 0;
 }
 
 ms_rules fetch_default_rules() {
@@ -480,11 +567,22 @@ ms_game_state random_game_state(ms_rules *r, ms_settings *s) {
     }
 
     gs.tableau.resize(r->tableau_size);
-    for (auto &t : gs.tableau) {
-        ms_card c = deck.back();
-        deck.pop_back();
-        c.hidden = false;
-        t.push_back(c);
+    if (r->diagonal_deal) {
+        for (unsigned i = 0; i < gs.tableau.size(); ++i) {
+            for (unsigned j = 0; j <= i; ++j) {
+                ms_card c = deck.back();
+                deck.pop_back();
+                gs.tableau[i].push_back(c);
+            }
+            gs.tableau[i].back().hidden = false;
+        }
+    } else {
+        for (auto &t : gs.tableau) {
+            ms_card c = deck.back();
+            deck.pop_back();
+            c.hidden = false;
+            t.push_back(c);
+        }
     }
 
     if (r->stock_size) {
@@ -496,7 +594,16 @@ ms_game_state random_game_state(ms_rules *r, ms_settings *s) {
         gs.stock.back().hidden = false;
     }
 
-    // TODO: cells, reserve, accordion
+    if (r->reserve_size) {
+        for (unsigned i = 0; i < r->reserve_size; ++i) {
+            ms_card c = deck.back();
+            deck.pop_back();
+            gs.reserve.push_back(c);
+        }
+        gs.reserve.back().hidden = false;
+    }
+
+    // TODO: cells, accordion
 
     assert(deck.empty());
 

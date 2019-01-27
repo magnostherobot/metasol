@@ -163,10 +163,10 @@ add_executable(solvitaire ${main} ${sources})
 set_property(TARGET solvitaire PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE) # For -flto flag
 target_link_libraries(solvitaire LINK_PUBLIC ${Boost_LIBRARIES})
 
-add_library(api STATIC ${sources})
-set_target_properties(api PROPERTIES PUBLIC_HEADER src/main/api.h)
-set_property(TARGET api PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE) # For -flto flag
-target_link_libraries(api LINK_PUBLIC ${Boost_LIBRARIES})
+add_library(sol STATIC ${sources})
+set_target_properties(sol PROPERTIES PUBLIC_HEADER src/main/api.h)
+set_property(TARGET sol PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE) # For -flto flag
+target_link_libraries(sol LINK_PUBLIC ${Boost_LIBRARIES})
 
 # add a separete executable for the 'no pile symmetry' version of the solver
 #add_executable(solvitaire-no-pile-symmetry ${main} ${sources})
