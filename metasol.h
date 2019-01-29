@@ -87,6 +87,8 @@ typedef struct ms_card {
 
 typedef std::vector<ms_card> ms_card_pile;
 
+ms_card ms_str_card(char *, bool);
+
 typedef struct ms_game_state {
     std::vector<ms_card_pile> foundations;
     ms_card_pile stock;
@@ -140,7 +142,7 @@ struct thread_info {
 ms_rules fetch_default_rules();
 ms_settings fetch_default_settings();
 
-ms_game_state random_game_state(ms_rules *, ms_settings *);
+int random_game_state(long, ms_game_state *, ms_rules *);
 
 int ms_run(ms_game_state *, ms_rules *, ms_settings *);
 

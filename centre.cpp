@@ -1,8 +1,26 @@
 #include <iostream>
+#include <map>
 #include <algorithm>
 
-#include "metasol.h"
 #include "solvitaire/headers/api.h"
+#include "docopt/docopt.h"
+#include "jsmn/jsmn.h"
+
+#include "metasol.h"
+
+static const char USAGE[] =
+R"(centre - a metasol instance.
+
+Usage: centre [options]
+
+Options:
+  -h --help  Display this help.
+  -r FILE --rules FILE  Specify a .json file containing game rules.
+  -g FILE --game FILE  Specify a .json file describing a game layout.
+  -s SEED --seed SEED  Specify a seed to use when randomly generating a game
+                       (set to 0 to use an unspecified seed).)";
+
+static const char VERSION_STR[] = "Solver in-development";
 
 sol_rules::build_policy convert_build_policy(build_policy_t bp) {
     switch (bp) {
@@ -382,8 +400,6 @@ finished_state thoughtful_run(ms_game_state *gs, ms_rules *r,
         void *data) {
     user_data *d = (user_data *) data;
 
-    print_sgs(gs, r);
-
     game_state solv_gs = convert_game_state(gs, r);
     movelist ml;
     return convert_result(get_moves(ml, solv_gs, d->run_cache_size,
@@ -472,6 +488,8 @@ ms_rules simple_canfield() {
 }
 
 bool solved(ms_game_state *gs, ms_rules *r, void *d) {
+    print_sgs(gs, r);
+
     return convert_game_state(gs, r).is_solved();
 }
 
@@ -501,11 +519,196 @@ user_data get_user_data() {
     return d;
 }
 
-int main() {
-    ms_rules r = klondike();
+long filelen(FILE *f) {
+    long pos = ftell(f);
+    fseek(f, 0, SEEK_END);
+    long length = ftell(f);
+    fseek(f, pos, SEEK_SET);
+
+    return length;
+}
+
+int file_str(FILE *f, char *buf, long buflen) {
+    fread(buf, 1, buflen, f);
+    return 0;
+}
+
+enum prim_type {
+    PRIM_NUM,
+    PRIM_BOOL,
+    PRIM_NULL
+};
+
+jsmntok_t *next_tok(jsmntok_t *t) {
+    return t + 1;
+}
+
+int assign_pile(jsmntok_t *key, const char *pile_name, ms_card_pile *pile,
+        char *js) {
+    pile->clear();
+
+    if (!strncmp(&js[key->start], pile_name, key->end - key->start)) {
+        jsmntok_t *val = next_tok(key);
+        assert(val->type == JSMN_ARRAY);
+        jsmntok_t *elem = val;
+        for (int i = 0; i < val->size; ++i) {
+            elem = next_tok(elem);
+            assert(elem->type == JSMN_STRING);
+            pile->push_back(ms_str_card(&js[elem->start], false));
+        }
+        return elem - key + 1;
+    } else {
+        return 0;
+    }
+}
+
+int assign_pile_group(jsmntok_t *key, const char *group_name,
+        std::vector<ms_card_pile> *group, char *js) {
+    group->clear();
+
+    if (!strncmp(&js[key->start], group_name, key->end - key->start)) {
+        jsmntok_t *piles = next_tok(key);
+        assert(piles->type == JSMN_ARRAY);
+        jsmntok_t *elem = piles;
+        for (int i = 0; i < piles->size; ++i) {
+            elem = next_tok(elem);
+            assert(elem->type == JSMN_ARRAY);
+            std::vector<ms_card> p;
+            jsmntok_t *outer = elem;
+            for (int j = 0; j < outer->size; ++j) {
+                elem = next_tok(elem);
+                assert(elem->type == JSMN_STRING);
+                p.push_back(ms_str_card(&js[elem->start], false));
+            }
+            group->push_back(p);
+        }
+        return elem - key + 1;
+    } else {
+        return 0;
+    }
+}
+
+int json_game_state(const char *filename, ms_game_state *gs) {
+    FILE *f = fopen(filename, "rb");
+    long length = filelen(f);
+    char *buf = (char *) malloc(length);
+
+    if (!buf) {
+        return 1;
+    }
+
+    file_str(f, buf, length);
+
+    jsmn_parser parser;
+    jsmn_init(&parser);
+    int tok_count = jsmn_parse(&parser, buf, length, NULL, 0);
+    jsmntok_t *tokens = (jsmntok_t *) malloc(tok_count * sizeof(jsmntok_t));
+
+    if (!tokens) {
+        return 2;
+    }
+
+    jsmn_init(&parser);
+    auto parse_val = jsmn_parse(&parser, buf, length, tokens, tok_count);
+    switch (parse_val) {
+        case JSMN_ERROR_INVAL:
+        case JSMN_ERROR_NOMEM:
+        case JSMN_ERROR_PART:
+            return 3;
+    }
+
+    for (int i = 0; i < tok_count;) {
+        jsmntok_t *tok = &tokens[i];
+
+        int x = 0;
+        switch (tok->type) {
+            case JSMN_OBJECT: {
+                x = 1;
+                break;
+            } case JSMN_STRING: {
+                x = assign_pile(tok, "stock", &gs->stock, buf);
+                if (x) {
+                    break;
+                }
+
+                x = assign_pile(tok, "waste", &gs->waste, buf);
+                if (x) {
+                    break;
+                }
+
+                x = assign_pile(tok, "reserve", &gs->reserve, buf);
+                if (x) {
+                    break;
+                }
+
+                x = assign_pile_group(tok, "tableau", &gs->tableau, buf);
+                if (x) {
+                    break;
+                }
+
+                x = assign_pile_group(tok, "foundations", &gs->foundations,
+                        buf);
+                if (x) {
+                    break;
+                }
+
+                x = assign_pile_group(tok, "cells", &gs->cells, buf);
+                if (x) {
+                    break;
+                }
+
+                assert(false);
+            } default: {
+                fprintf(stderr, "%d\n", tok->type);
+                assert(false);
+            }
+        }
+        i += x;
+    }
+
+    free(buf);
+    free(tokens);
+
+    return 0;
+}
+
+int make_game_state(ms_game_state *gs, ms_rules *r,
+        std::map<std::string, docopt::value> &args) {
+    if (args["--game"]) {
+        const char *filename = args["--game"].asString().c_str();
+        return json_game_state(filename, gs);
+    } else {
+        long seed;
+        if (args["--seed"]) {
+            seed = args["--seed"].asLong();
+        } else {
+            seed = 0;
+        }
+
+        return random_game_state(seed, gs, r);
+    }
+}
+
+void parse_args(int argc, char **argv, ms_game_state *gs, ms_rules *r,
+        ms_settings *s) {
+    std::map<std::string, docopt::value> args = docopt::docopt(USAGE,
+            { argv + 1, argv + argc }, true, VERSION_STR);
+
+    *r = simple_canfield();
+    make_game_state(gs, r, args);
+    /* make_rules(r, args); */
+    /* make_settings(s, args); */
+}
+
+int main(int argc, char **argv) {
+    ms_rules r;
+    ms_settings s;
+    ms_game_state gs;
+
+    parse_args(argc, argv, &gs, &r, &s);
+
     user_data d = get_user_data();
-    ms_settings s = get_settings(&d);
-    ms_game_state gs = random_game_state(&r, &s);
+    s = get_settings(&d);
 
     return ms_run(&gs, &r, &s);
 }

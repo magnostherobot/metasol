@@ -86,11 +86,11 @@ char suit_char(card_suit s) {
     }
 }
 
-ms_card ms_str_card(std::string str) {
+ms_card ms_str_card(char *str, bool hidden = true) {
     ms_card card;
     card.suit = char_suit(str[1]);
     card.rank = char_rank(str[0]);
-    card.hidden = true;
+    card.hidden = hidden;
     return card;
 }
 
@@ -142,7 +142,6 @@ unsigned total_pile_count(ms_rules *r) {
 std::random_device rd;
 auto seed = static_cast<long unsigned int>(time(0));
 auto rng = std::default_random_engine{seed};
-
 int shuffle_hidden(ms_game_state *gs) {
     std::vector<ms_card *> hidden_card_pointers;
     get_hidden_cards(gs, hidden_card_pointers);
@@ -233,7 +232,6 @@ int move_atop(ms_card_pile *f, ms_card_pile *t, unsigned count, bool *reveal) {
         f->back().hidden = false;
     }
 
-    debug("%s\n", *reveal ? "true" : "false");
     return 0;
 }
 
@@ -344,7 +342,6 @@ void run_loop(ms_game_state *gs, ms_rules *r, ms_settings *s,
     for (unsigned i = 0; i < s->max_votes; ++i) {
         if (vote_results[i] == SOLUTION_FOUND) {
             assert(!votes[i].empty());
-            debug("votes[%d]: %lu\n", i, votes[i].size());
 
             ms_move vote = votes[i].back();
             votes[i].pop_back();
@@ -476,7 +473,7 @@ ms_rules fetch_default_rules() {
     return dr;
 }
 
-int make_deck(ms_rules *r, ms_settings *s, ms_card_pile *buf) {
+int make_deck(ms_rules *r, ms_card_pile *buf) {
     buf->clear();
     for (unsigned i = 0; i < r->deck_count; ++i) {
         for (auto suit : SUITS) {
@@ -515,16 +512,18 @@ int remove_all_by_rank(ms_card_pile *p, card_rank r) {
     return 0;
 }
 
-ms_game_state random_game_state(ms_rules *r, ms_settings *s) {
-    ms_game_state gs;
+int random_game_state(long user_seed, ms_game_state *gs, ms_rules *r) {
+    std::random_device rd;
+    auto seed = user_seed ? user_seed : static_cast<long unsigned>(time(0));
+    auto rng = std::default_random_engine{seed};
 
     ms_card_pile deck;
-    make_deck(r, s, &deck);
+    make_deck(r, &deck);
 
     std::shuffle(deck.begin(), deck.end(), rng);
 
     if (r->foundations_present) {
-        gs.foundations.resize(4 * r->deck_count);
+        gs->foundations.resize(4 * r->deck_count);
         switch (r->foundations_init_cards) {
             case NO_FOUNDATION_INIT: {
                 break;
@@ -537,7 +536,7 @@ ms_game_state random_game_state(ms_rules *r, ms_settings *s) {
                     deck.pop_back();
                 }
                 c.hidden = false;
-                gs.foundations[0].push_back(c);
+                gs->foundations[0].push_back(c);
                 break;
             } case ALL_FOUNDATIONS_INIT: {
                 if (r->specific_foundations_base) {
@@ -548,11 +547,11 @@ ms_game_state random_game_state(ms_rules *r, ms_settings *s) {
                             c.suit = SUITS[j];
                             c.rank = r->foundations_base;
                             c.hidden = false;
-                            gs.foundations[i * 4 + j].push_back(c);
+                            gs->foundations[i * 4 + j].push_back(c);
                         }
                     }
                 } else {
-                    for (auto f : gs.foundations) {
+                    for (auto f : gs->foundations) {
                         ms_card c = deck.back();
                         deck.pop_back();
                         c.hidden = false;
@@ -566,18 +565,18 @@ ms_game_state random_game_state(ms_rules *r, ms_settings *s) {
         }
     }
 
-    gs.tableau.resize(r->tableau_size);
+    gs->tableau.resize(r->tableau_size);
     if (r->diagonal_deal) {
-        for (unsigned i = 0; i < gs.tableau.size(); ++i) {
+        for (unsigned i = 0; i < gs->tableau.size(); ++i) {
             for (unsigned j = 0; j <= i; ++j) {
                 ms_card c = deck.back();
                 deck.pop_back();
-                gs.tableau[i].push_back(c);
+                gs->tableau[i].push_back(c);
             }
-            gs.tableau[i].back().hidden = false;
+            gs->tableau[i].back().hidden = false;
         }
     } else {
-        for (auto &t : gs.tableau) {
+        for (auto &t : gs->tableau) {
             ms_card c = deck.back();
             deck.pop_back();
             c.hidden = false;
@@ -589,23 +588,23 @@ ms_game_state random_game_state(ms_rules *r, ms_settings *s) {
         for (unsigned i = 0; i < r->stock_size; ++i) {
             ms_card c = deck.back();
             deck.pop_back();
-            gs.stock.push_back(c);
+            gs->stock.push_back(c);
         }
-        gs.stock.back().hidden = false;
+        gs->stock.back().hidden = false;
     }
 
     if (r->reserve_size) {
         for (unsigned i = 0; i < r->reserve_size; ++i) {
             ms_card c = deck.back();
             deck.pop_back();
-            gs.reserve.push_back(c);
+            gs->reserve.push_back(c);
         }
-        gs.reserve.back().hidden = false;
+        gs->reserve.back().hidden = false;
     }
 
     // TODO: cells, accordion
 
     assert(deck.empty());
 
-    return gs;
+    return 0;
 }

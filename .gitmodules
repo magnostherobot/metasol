@@ -1,3 +1,9 @@
 [submodule "thpool"]
 	path = thpool
 	url = git@github.com:Pithikos/C-Thread-Pool
+[submodule "jsmn"]
+	path = jsmn
+	url = git@github.com:zserge/jsmn
+[submodule "docopt"]
+	path = docopt
+	url = git@github.com:docopt/docopt.cpp
