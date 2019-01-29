@@ -142,7 +142,7 @@ struct thread_info {
 ms_rules fetch_default_rules();
 ms_settings fetch_default_settings();
 
-int random_game_state(long, ms_game_state *, ms_rules *);
+ms_game_state random_game_state(long, ms_rules *);
 
 int ms_run(ms_game_state *, ms_rules *, ms_settings *);
 

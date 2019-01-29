@@ -324,19 +324,11 @@ void run_loop(ms_game_state *gs, ms_rules *r, ms_settings *s,
         t_infos[i].move_buf = &votes[i];
         t_infos[i].result = &vote_results[i];
 
-#ifdef NOTHREAD
-
-        run_thread(&t_infos[i]);
-
-#else
-
         thpool_add_work(*thpool, (void (*)(void *)) &run_thread,
                 (void *) &t_infos[i]);
     }
 
     thpool_wait(*thpool);
-
-#endif
 
     std::map<ms_move, int> tallied_votes;
     for (unsigned i = 0; i < s->max_votes; ++i) {
@@ -512,7 +504,9 @@ int remove_all_by_rank(ms_card_pile *p, card_rank r) {
     return 0;
 }
 
-int random_game_state(long user_seed, ms_game_state *gs, ms_rules *r) {
+ms_game_state random_game_state(long user_seed, ms_rules *r) {
+    ms_game_state gs;
+
     std::random_device rd;
     auto seed = user_seed ? user_seed : static_cast<long unsigned>(time(0));
     auto rng = std::default_random_engine{seed};
@@ -523,7 +517,7 @@ int random_game_state(long user_seed, ms_game_state *gs, ms_rules *r) {
     std::shuffle(deck.begin(), deck.end(), rng);
 
     if (r->foundations_present) {
-        gs->foundations.resize(4 * r->deck_count);
+        gs.foundations.resize(4 * r->deck_count);
         switch (r->foundations_init_cards) {
             case NO_FOUNDATION_INIT: {
                 break;
@@ -536,7 +530,7 @@ int random_game_state(long user_seed, ms_game_state *gs, ms_rules *r) {
                     deck.pop_back();
                 }
                 c.hidden = false;
-                gs->foundations[0].push_back(c);
+                gs.foundations[0].push_back(c);
                 break;
             } case ALL_FOUNDATIONS_INIT: {
                 if (r->specific_foundations_base) {
@@ -547,11 +541,11 @@ int random_game_state(long user_seed, ms_game_state *gs, ms_rules *r) {
                             c.suit = SUITS[j];
                             c.rank = r->foundations_base;
                             c.hidden = false;
-                            gs->foundations[i * 4 + j].push_back(c);
+                            gs.foundations[i * 4 + j].push_back(c);
                         }
                     }
                 } else {
-                    for (auto f : gs->foundations) {
+                    for (auto f : gs.foundations) {
                         ms_card c = deck.back();
                         deck.pop_back();
                         c.hidden = false;
@@ -565,18 +559,18 @@ int random_game_state(long user_seed, ms_game_state *gs, ms_rules *r) {
         }
     }
 
-    gs->tableau.resize(r->tableau_size);
+    gs.tableau.resize(r->tableau_size);
     if (r->diagonal_deal) {
-        for (unsigned i = 0; i < gs->tableau.size(); ++i) {
+        for (unsigned i = 0; i < gs.tableau.size(); ++i) {
             for (unsigned j = 0; j <= i; ++j) {
                 ms_card c = deck.back();
                 deck.pop_back();
-                gs->tableau[i].push_back(c);
+                gs.tableau[i].push_back(c);
             }
-            gs->tableau[i].back().hidden = false;
+            gs.tableau[i].back().hidden = false;
         }
     } else {
-        for (auto &t : gs->tableau) {
+        for (auto &t : gs.tableau) {
             ms_card c = deck.back();
             deck.pop_back();
             c.hidden = false;
@@ -588,23 +582,23 @@ int random_game_state(long user_seed, ms_game_state *gs, ms_rules *r) {
         for (unsigned i = 0; i < r->stock_size; ++i) {
             ms_card c = deck.back();
             deck.pop_back();
-            gs->stock.push_back(c);
+            gs.stock.push_back(c);
         }
-        gs->stock.back().hidden = false;
+        gs.stock.back().hidden = false;
     }
 
     if (r->reserve_size) {
         for (unsigned i = 0; i < r->reserve_size; ++i) {
             ms_card c = deck.back();
             deck.pop_back();
-            gs->reserve.push_back(c);
+            gs.reserve.push_back(c);
         }
-        gs->reserve.back().hidden = false;
+        gs.reserve.back().hidden = false;
     }
 
     // TODO: cells, accordion
 
     assert(deck.empty());
 
-    return 0;
+    return gs;
 }
