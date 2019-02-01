@@ -16,9 +16,9 @@ Usage: centre [options]
 Options:
   -h --help  Display this help.
   -r FILE --rules FILE  Specify a .json file containing game rules.
-  -g FILE --game FILE  Specify a .json file describing a game layout.
-  -s SEED --seed SEED  Specify a seed to use when randomly generating a game
-                       (set to 0 to use an unspecified seed).)";
+  -g FILE --game  FILE  Specify a .json file describing a game layout.
+  -s SEED --seed  SEED  Specify a seed to use when randomly generating a game
+                        (set to 0 to use an unspecified seed).)";
 
 static const char VERSION_STR[] = "Solver in-development";
 
@@ -542,6 +542,67 @@ jsmntok_t *next_tok(jsmntok_t *t) {
     return t + 1;
 }
 
+enum PRIM_TYPE {
+    NUMBER_TYPE, BOOL_TYPE, NULL_TYPE
+};
+
+PRIM_TYPE prim_type(jsmntok_t *tok, char *js) {
+    switch (js[tok->start]) {
+        case '0': case '1': case '2': case '3': case '4': case '5': case '6':
+        case '7': case '8': case '9': case '-':
+            return NUMBER_TYPE;
+        case 't': case 'f':
+            return BOOL_TYPE;
+        case 'n':
+            return NULL_TYPE;
+        default:
+            assert(false);
+    }
+}
+
+int assign_rule_prim(jsmntok_t *key, const char *name, PRIM_TYPE type,
+        void *rule, char *js) {
+    if (!strncmp(&js[key->start], name, key->end - key->start)) {
+        jsmntok_t *val = next_tok(key);
+        assert(val->type == JSMN_PRIMITIVE);
+        PRIM_TYPE pt = prim_type(val, js);
+        assert(pt == type);
+        unsigned *irule = (unsigned *) rule;
+        bool *brule = (bool *) rule;
+        switch (pt) {
+            case NUMBER_TYPE:
+                *irule = atoi(&js[val->start]);
+                break;
+            case BOOL_TYPE:
+                *brule = (js[val->start] == 't');
+                break;
+            case NULL_TYPE:
+            default:
+                assert(false);
+        }
+        return 2;
+    } else {
+        return 0;
+    }
+}
+
+int assign_rule_enum(jsmntok_t *key, const char *name, char (*func)(char *),
+        char *rule, char *js) {
+    long length = key->end - key->start;
+    char *str = &js[key->start];
+    if (!strncmp(str, name, length)) {
+        jsmntok_t *val = next_tok(key);
+        assert(val->type == JSMN_STRING);
+        char *buf = (char *) malloc(length + 1);
+        strncpy(buf, str, length);
+        buf[length] = '\0';
+        *rule = func(buf);
+        return 2;
+    } else {
+        return 0;
+    }
+}
+
 int assign_pile(jsmntok_t *key, const char *pile_name, ms_card_pile *pile,
         char *js) {
     pile->clear();
@@ -587,6 +648,100 @@ int assign_pile_group(jsmntok_t *key, const char *group_name,
     }
 }
 
+ms_rules json_rules(const char *filename) {
+    FILE *f = fopen(filename, "rb");
+    long length = filelen(f);
+    char *buf = (char *) malloc(length);
+
+    assert(buf);
+
+    file_str(f, buf, length);
+
+    jsmn_parser parser;
+    jsmn_init(&parser);
+    int tok_count = jsmn_parse(&parser, buf, length, NULL, 0);
+    jsmntok_t *tokens = (jsmntok_t *) malloc(tok_count * sizeof(jsmntok_t));
+
+    assert(tokens);
+
+    jsmn_init(&parser);
+    auto parse_val = jsmn_parse(&parser, buf, length, tokens, tok_count);
+
+    assert(parse_val != JSMN_ERROR_INVAL);
+    assert(parse_val != JSMN_ERROR_NOMEM);
+    assert(parse_val != JSMN_ERROR_PART);
+
+    ms_rules r = fetch_default_rules();
+
+    for (int i = 0; i < tok_count;) {
+        jsmntok_t *tok = &tokens[i];
+
+        int x = 0;
+        switch (tok->type) {
+            case JSMN_OBJECT: {
+                x = 1;
+                break;
+            } case JSMN_STRING: {
+#               define arp(n, t, p) { \
+                    x = assign_rule_prim(tok, n, t, p, buf); \
+                    if (x) break; \
+                }
+
+                arp("tableau size", NUMBER_TYPE, &r.tableau_size);
+                arp("deck count", NUMBER_TYPE, &r.deck_count);
+                arp("max rank", NUMBER_TYPE, &r.max_rank);
+                arp("hole", BOOL_TYPE, &r.hole_present);
+                arp("foundations", BOOL_TYPE, &r.foundations_present);
+                arp("foundations removable", BOOL_TYPE,
+                        &r.foundations_removable);
+                arp("foundations accept only complete piles", BOOL_TYPE,
+                        &r.foundations_only_comp_piles);
+                arp("diagonal deal", BOOL_TYPE, &r.diagonal_deal);
+                arp("number of cells", NUMBER_TYPE, &r.cells);
+                arp("cells pre-filled", BOOL_TYPE, &r.cells_pre_filled);
+                arp("cards in stock", NUMBER_TYPE, &r.stock_size);
+                arp("stock deal count", NUMBER_TYPE, &r.stock_deal_count);
+                arp("stock redeal allowed", BOOL_TYPE, &r.stock_redeal);
+                arp("cards in reserve", NUMBER_TYPE, &r.reserve_size);
+                arp("reserve stacked", BOOL_TYPE, &r.reserve_stacked);
+                arp("cards in sequence", NUMBER_TYPE, &r.sequence_count);
+                arp("sequence fixed suit", BOOL_TYPE, &r.sequence_fixed_suit);
+
+#               define are(n, f, p) { \
+                    x = assign_rule_enum(tok, n, (char (*)(char *)) f, \
+                            (char *) p, buf); \
+                    if (x) break; \
+                }
+
+                are("build policy", str_build_policy, &r.build_policy);
+                are("spaces policy", str_spaces_policy, &r.spaces_policy);
+                are("move built group", str_built_group, &r.move_built_group);
+                are("group build policy", str_build_policy,
+                        &r.built_group_policy);
+                are("foundations initialised", str_foundations_init,
+                        &r.foundations_init_cards);
+                are("stock deal method", str_stock_deal, &r.stock_deal_method);
+                are("face up cards", str_face_up_policy, &r.face_up_policy);
+                are("face up policy", str_face_up_policy, &r.face_up_policy);
+                are("sequence direction", str_direction, &r.sequence_direction);
+                are("sequence build policy", str_build_policy,
+                        &r.sequence_build_policy);
+
+                fprintf(stderr, "%s\n", &buf[tok->start]);
+                assert(false);
+            } default: {
+                assert(false);
+            }
+        }
+        i += x;
+    }
+
+    free(buf);
+    free(tokens);
+
+    return r;
+}
+
 ms_game_state json_game_state(const char *filename) {
     FILE *f = fopen(filename, "rb");
     long length = filelen(f);
@@ -621,36 +776,22 @@ ms_game_state json_game_state(const char *filename) {
                 x = 1;
                 break;
             } case JSMN_STRING: {
-                x = assign_pile(tok, "stock", &gs.stock, buf);
-                if (x) {
-                    break;
+#               define _assign_pile(n, p) { \
+                    x = assign_pile(tok, n, p, buf); \
+                    if (x) break; \
                 }
 
-                x = assign_pile(tok, "waste", &gs.waste, buf);
-                if (x) {
-                    break;
+#               define _assign_pile_group(n, p) { \
+                    x = assign_pile_group(tok, n, p, buf); \
+                    if (x) break; \
                 }
 
-                x = assign_pile(tok, "reserve", &gs.reserve, buf);
-                if (x) {
-                    break;
-                }
-
-                x = assign_pile_group(tok, "tableau", &gs.tableau, buf);
-                if (x) {
-                    break;
-                }
-
-                x = assign_pile_group(tok, "foundations", &gs.foundations,
-                        buf);
-                if (x) {
-                    break;
-                }
-
-                x = assign_pile_group(tok, "cells", &gs.cells, buf);
-                if (x) {
-                    break;
-                }
+                _assign_pile("stock", &gs.stock);
+                _assign_pile("waste", &gs.waste);
+                _assign_pile("reserve", &gs.reserve);
+                _assign_pile_group("tableau", &gs.tableau);
+                _assign_pile_group("foundations", &gs.foundations);
+                _assign_pile_group("cells", &gs.cells);
 
                 assert(false);
             } default: {
@@ -684,13 +825,21 @@ ms_game_state make_game_state(ms_rules *r,
     }
 }
 
+ms_rules make_rules(std::map<std::string, docopt::value> &args) {
+    if (args["--rules"]) {
+        const char *filename = args["--rules"].asString().c_str();
+        return json_rules(filename);
+    } else {
+        return canfield();
+    }
+}
+
 void parse_args(int argc, char **argv, ms_game_state *gs, ms_rules *r) {
     std::map<std::string, docopt::value> args = docopt::docopt(USAGE,
             { argv + 1, argv + argc }, true, VERSION_STR);
 
-    *r = simple_canfield();
+    *r = make_rules(args);
     *gs = make_game_state(r, args);
-    /* make_rules(r, args); */
     /* make_settings(s, args); */
 }
 

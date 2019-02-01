@@ -16,6 +16,149 @@
 
 card_suit SUITS[4] = { HEARTS, SPADES, CLUBS, DIAMONDS };
 
+void lower(char *str) {
+    for (; *str; ++str) *str = tolower(*str);
+}
+
+struct dictcmp {
+    bool operator()(const char *a, const char *b) {
+        return strcmp(a, b) < 0;
+    }
+};
+
+#define kv_dict(t) std::map<const char *, t, dictcmp>
+
+build_policy_t str_build_policy(char *str) {
+    kv_dict(build_policy_t) dict = {
+        { "no build", NO_BUILD },
+        { "none", NO_BUILD },
+
+        { "same suit", BUILD_SAME_SUIT },
+        { "suits", BUILD_SAME_SUIT },
+
+        { "alternating", BUILD_ALTERNATING },
+        { "red-black", BUILD_ALTERNATING },
+
+        { "any", BUILD_ANY },
+        { "all", BUILD_ANY }
+    };
+
+    lower(str);
+    return dict[str];
+}
+
+spaces_policy_t str_spaces_policy(char *str) {
+    kv_dict(spaces_policy_t) dict = {
+        { "none", NO_SPACE_FILL },
+        { "no fill", NO_SPACE_FILL },
+
+        { "kings only", KINGS_FILL_SPACE },
+        { "kings", KINGS_FILL_SPACE },
+
+        { "any", ANY_FILL_SPACE },
+        { "all", ANY_FILL_SPACE },
+
+        { "reserve first", AUTO_RESERVE_THEN_WASTE },
+        { "reserve then waste", AUTO_RESERVE_THEN_WASTE },
+
+        { "waste first", AUTO_WASTE_THEN_STOCK },
+        { "waste then stock", AUTO_WASTE_THEN_STOCK }
+    };
+
+    lower(str);
+    return dict[str];
+}
+
+accordion_policy_t str_accordion_policy(char *str) {
+    kv_dict(accordion_policy_t) dict = {
+        { "same rank", ACCORDION_SAME_RANK },
+        { "rank", ACCORDION_SAME_RANK },
+
+        { "same suit", ACCORDION_SAME_SUIT },
+        { "suit", ACCORDION_SAME_SUIT },
+
+        { "alternating colour", ACCORDION_ALTERNATE_COLOUR },
+        { "red-black", ACCORDION_ALTERNATE_COLOUR },
+
+        { "any", ACCORDION_ANY_SUIT }
+    };
+
+    lower(str);
+    return dict[str];
+}
+
+stock_deal_t str_stock_deal(char *str) {
+    kv_dict(stock_deal_t) dict = {
+        { "waste", STOCK_TO_WASTE },
+        { "stock to waste", STOCK_TO_WASTE },
+
+        { "tableau", STOCK_TO_TABLEAU },
+        { "stock to tableau", STOCK_TO_TABLEAU }
+    };
+
+    lower(str);
+    return dict[str];
+}
+
+face_up_policy_t str_face_up_policy(char *str) {
+    kv_dict(face_up_policy_t) dict = {
+        { "all", ALL_CARDS_FACE_UP },
+
+        { "top", TOP_CARDS_FACE_UP },
+        { "top only", TOP_CARDS_FACE_UP }
+    };
+
+    lower(str);
+    return dict[str];
+}
+
+direction_t str_direction(char *str) {
+    kv_dict(direction_t) dict = {
+        { "left", LEFT },
+
+        { "right", RIGHT },
+
+        { "both", BOTH },
+        { "lr", BOTH }
+    };
+
+    lower(str);
+    return dict[str];
+}
+
+built_group_t str_built_group(char *str) {
+    kv_dict(built_group_t) dict = {
+        { "yes", CAN_MOVE_BUILT_GROUP },
+
+        { "no", CANNOT_MOVE_BUILT_GROUP },
+        { "none", CANNOT_MOVE_BUILT_GROUP },
+
+        { "whole pile only", CAN_MOVE_WHOLE_PILE },
+        { "whole pile", CAN_MOVE_WHOLE_PILE },
+
+        { "maximal group only", CAN_MOVE_MAXIMAL_GROUP },
+        { "maximal", CAN_MOVE_MAXIMAL_GROUP }
+    };
+
+    lower(str);
+    return dict[str];
+}
+
+foundations_init_t str_foundations_init(char *str) {
+    kv_dict (foundations_init_t) dict = {
+        { "no", NO_FOUNDATION_INIT },
+        { "none", NO_FOUNDATION_INIT },
+
+        { "one", ONE_FOUNDATION_INIT },
+
+        { "all", ALL_FOUNDATIONS_INIT },
+        { "yes", ALL_FOUNDATIONS_INIT }
+    };
+
+    lower(str);
+    return dict[str];
+}
+
 ms_settings fetch_default_settings() {
     ms_settings s;
     s.run_func = NULL;
@@ -355,7 +498,7 @@ void run_loop(ms_game_state *gs, ms_rules *r, ms_settings *s,
 
         debug("%u->%u(%u) has %d votes\n", move.from, move.to, move.size, vote);
 
-        if (vote > max_votes) {// && !opposite_move(&move, previous_move)) {
+        if (vote > max_votes) {
             max_move = &move;
             max_votes = vote;
         }

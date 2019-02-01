@@ -4,41 +4,63 @@
 #include <vector>
 
 #include <stdint.h>
+#include <string.h>
 
 enum build_policy_t {
     NO_BUILD, BUILD_SAME_SUIT, BUILD_ALTERNATING, BUILD_ANY
 };
+
+build_policy_t str_build_policy(char *);
 
 enum spaces_policy_t {
     NO_SPACE_FILL, KINGS_FILL_SPACE, ANY_FILL_SPACE, AUTO_RESERVE_THEN_WASTE,
     AUTO_WASTE_THEN_STOCK
 };
 
+#define KINGS_FILL_SPACES KINGS_FILL_SPACE
+#define ANY_FILL_SPACES ANY_FILL_SPACE
+
+spaces_policy_t str_spaces_policy(char *);
+
 enum accordion_policy_t {
     ACCORDION_SAME_RANK, ACCORDION_SAME_SUIT, ACCORDION_ALTERNATE_COLOUR,
     ACCORDION_ANY_SUIT
 };
 
+accordion_policy_t str_accordion_policy(char *);
+
 enum stock_deal_t {
     STOCK_TO_WASTE, STOCK_TO_TABLEAU
 };
+
+stock_deal_t str_stock_deal(char *);
 
 enum face_up_policy_t {
     ALL_CARDS_FACE_UP, TOP_CARDS_FACE_UP
 };
 
+face_up_policy_t str_face_up_policy(char *);
+
 enum direction_t {
     LEFT, RIGHT, BOTH
 };
+
+direction_t str_direction(char *);
 
 enum built_group_t {
     CAN_MOVE_BUILT_GROUP, CANNOT_MOVE_BUILT_GROUP, CAN_MOVE_WHOLE_PILE,
     CAN_MOVE_MAXIMAL_GROUP
 };
 
+built_group_t str_built_group(char *);
+
 enum foundations_init_t {
     NO_FOUNDATION_INIT, ONE_FOUNDATION_INIT, ALL_FOUNDATIONS_INIT
 };
+
+#define NO_FOUNDATIONS_INIT NO_FOUNDATION_INIT
+
+foundations_init_t str_foundations_init(char *);
 
 enum card_suit { HEARTS, SPADES, CLUBS, DIAMONDS };
 extern card_suit SUITS[4];
