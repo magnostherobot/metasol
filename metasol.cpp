@@ -702,25 +702,6 @@ ms_game_state random_game_state(long user_seed, ms_rules *r) {
         }
     }
 
-    gs.tableau.resize(r->tableau_size);
-    if (r->diagonal_deal) {
-        for (unsigned i = 0; i < gs.tableau.size(); ++i) {
-            for (unsigned j = 0; j <= i; ++j) {
-                ms_card c = deck.back();
-                deck.pop_back();
-                gs.tableau[i].push_back(c);
-            }
-            gs.tableau[i].back().hidden = false;
-        }
-    } else {
-        for (auto &t : gs.tableau) {
-            ms_card c = deck.back();
-            deck.pop_back();
-            c.hidden = false;
-            t.push_back(c);
-        }
-    }
-
     if (r->stock_size) {
         for (unsigned i = 0; i < r->stock_size; ++i) {
             ms_card c = deck.back();
@@ -741,7 +722,31 @@ ms_game_state random_game_state(long user_seed, ms_rules *r) {
 
     // TODO: cells, accordion
 
-    assert(deck.empty());
+    if (r->tableau_size) {
+        gs.tableau.resize(r->tableau_size);
 
+        if (r->diagonal_deal) {
+            for (unsigned i = 0; i < r->tableau_size; ++i) {
+                for (unsigned j = 0; j <= i; ++j) {
+                    ms_card c = deck.back();
+                    deck.pop_back();
+                    gs.tableau[i].push_back(c);
+                }
+                gs.tableau[i].back().hidden = false;
+            }
+        } else {
+            unsigned deep = deck.size() / r->tableau_size;
+            for (unsigned i = 0; i < deep; ++i) {
+                for (auto &t : gs.tableau) {
+                    ms_card c = deck.back();
+                    deck.pop_back();
+                    c.hidden = i != deep - 1;
+                    t.push_back(c);
+                }
+            }
+        }
+    }
+
+    assert(deck.empty());
     return gs;
 }
