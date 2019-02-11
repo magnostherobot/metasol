@@ -22,7 +22,7 @@ init-submodules:
 	git submodule update
 	$(MAKE) -C thpool
 	$(MAKE) -C jsmn
-	(cd docopt; cmake .; make docopt_s)
+	(cd docopt; cmake .) $(MAKE) -C docopt docopt_s
 	(cd solvitaire; sh build.sh)
 
 run: $(TRGT)

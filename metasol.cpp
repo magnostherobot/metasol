@@ -3,6 +3,7 @@
 #include <random>
 
 #include <assert.h>
+#include <err.h>
 
 #include "thpool/thpool.h"
 
@@ -28,23 +29,39 @@ struct dictcmp {
 
 #define kv_dict(t) std::map<const char *, t, dictcmp>
 
+#define C(x) #x,
+
 build_policy_t str_build_policy(char *str) {
     kv_dict(build_policy_t) dict = {
         { "no build", NO_BUILD },
         { "none", NO_BUILD },
 
         { "same suit", BUILD_SAME_SUIT },
+        { "same-suit", BUILD_SAME_SUIT },
         { "suits", BUILD_SAME_SUIT },
 
         { "alternating", BUILD_ALTERNATING },
         { "red-black", BUILD_ALTERNATING },
 
         { "any", BUILD_ANY },
+        { "any-suit", BUILD_ANY },
         { "all", BUILD_ANY }
     };
 
     lower(str);
-    return dict[str];
+    auto result = dict.find(str);
+    
+    if (result == dict.end()) {
+        errx(EXIT_FAILURE, "unknown key '%s'", str);
+    }
+
+    return result->second;
+}
+
+const char *build_policy_str(build_policy_t bp) {
+    const char *const build_policy_arr[] = { build_policy_t_gen };
+    assert(bp < build_policy_t_count);
+    return build_policy_arr[bp];
 }
 
 spaces_policy_t str_spaces_policy(char *str) {
@@ -66,7 +83,19 @@ spaces_policy_t str_spaces_policy(char *str) {
     };
 
     lower(str);
-    return dict[str];
+    auto result = dict.find(str);
+    
+    if (result == dict.end()) {
+        errx(EXIT_FAILURE, "unknown key '%s'", str);
+    }
+
+    return result->second;
+}
+
+const char *spaces_policy_str(spaces_policy_t bp) {
+    const char *const spaces_policy_arr[] = { spaces_policy_t_gen };
+    assert(bp < spaces_policy_t_count);
+    return spaces_policy_arr[bp];
 }
 
 accordion_policy_t str_accordion_policy(char *str) {
@@ -84,7 +113,19 @@ accordion_policy_t str_accordion_policy(char *str) {
     };
 
     lower(str);
-    return dict[str];
+    auto result = dict.find(str);
+    
+    if (result == dict.end()) {
+        errx(EXIT_FAILURE, "unknown key '%s'", str);
+    }
+
+    return result->second;
+}
+
+const char *accordion_policy_str(accordion_policy_t bp) {
+    const char *const accordion_policy_arr[] = { accordion_policy_t_gen };
+    assert(bp < accordion_policy_t_count);
+    return accordion_policy_arr[bp];
 }
 
 stock_deal_t str_stock_deal(char *str) {
@@ -97,7 +138,19 @@ stock_deal_t str_stock_deal(char *str) {
     };
 
     lower(str);
-    return dict[str];
+    auto result = dict.find(str);
+
+    if (result == dict.end()) {
+        errx(EXIT_FAILURE, "unknown key '%s'", str);
+    }
+
+    return result->second;
+}
+
+const char *stock_deal_str(stock_deal_t bp) {
+    const char *const stock_deal_arr[] = { stock_deal_t_gen };
+    assert(bp < stock_deal_t_count);
+    return stock_deal_arr[bp];
 }
 
 face_up_policy_t str_face_up_policy(char *str) {
@@ -109,7 +162,19 @@ face_up_policy_t str_face_up_policy(char *str) {
     };
 
     lower(str);
-    return dict[str];
+    auto result = dict.find(str);
+
+    if (result == dict.end()) {
+        errx(EXIT_FAILURE, "unknown key '%s'", str);
+    }
+
+    return result->second;
+}
+
+const char *face_up_policy_str(face_up_policy_t bp) {
+    const char *const face_up_policy_arr[] = { face_up_policy_t_gen };
+    assert(bp < face_up_policy_t_count);
+    return face_up_policy_arr[bp];
 }
 
 direction_t str_direction(char *str) {
@@ -123,7 +188,19 @@ direction_t str_direction(char *str) {
     };
 
     lower(str);
-    return dict[str];
+    auto result = dict.find(str);
+
+    if (result == dict.end()) {
+        errx(EXIT_FAILURE, "unknown key '%s'", str);
+    }
+
+    return result->second;
+}
+
+const char *direction_str(direction_t bp) {
+    const char *const direction_arr[] = { direction_t_gen };
+    assert(bp < direction_t_count);
+    return direction_arr[bp];
 }
 
 built_group_t str_built_group(char *str) {
@@ -141,7 +218,19 @@ built_group_t str_built_group(char *str) {
     };
 
     lower(str);
-    return dict[str];
+    auto result = dict.find(str);
+
+    if (result == dict.end()) {
+        errx(EXIT_FAILURE, "unknown key '%s'", str);
+    }
+
+    return result->second;
+}
+
+const char *built_group_str(built_group_t bp) {
+    const char *const built_group_arr[] = { built_group_t_gen };
+    assert(bp < built_group_t_count);
+    return built_group_arr[bp];
 }
 
 foundations_init_t str_foundations_init(char *str) {
@@ -156,7 +245,19 @@ foundations_init_t str_foundations_init(char *str) {
     };
 
     lower(str);
-    return dict[str];
+    auto result = dict.find(str);
+
+    if (result == dict.end()) {
+        errx(EXIT_FAILURE, "unknown key '%s'", str);
+    }
+
+    return result->second;
+}
+
+const char *foundations_init_str(foundations_init_t bp) {
+    const char *const foundations_init_arr[] = { foundations_init_t_gen };
+    assert(bp < foundations_init_t_count);
+    return foundations_init_arr[bp];
 }
 
 ms_settings fetch_default_settings() {
@@ -339,17 +440,13 @@ ms_card_pile *get_pile_by_index(ms_game_state *gs, ms_rules *r, uint8_t i) {
 }
 
 void *run_thread(void *vargp) {
-    struct thread_info *ti = (struct thread_info *) vargp;
+    thread_info *ti = (thread_info *) vargp;
     *ti->result = ti->s->run_func(ti->gs, ti->r, ti->move_buf,
             ti->s->reserved_move_count, ti->s->user_data);
     return NULL;
 }
 
-// TODO: this shouldn't be implemented as an operator - it should be its own
-// function.
-bool operator< (const ms_move &a, const ms_move &b) {
-    // FIXME: if we want to group all moves that go through the stock together,
-    // it's necessary to make them "not less than" one another.
+bool ms_move_lt(const ms_move &a, const ms_move &b) {
     if (a.stock && b.stock) return false;
 
     if (a.from < b.from) return true;
@@ -357,6 +454,12 @@ bool operator< (const ms_move &a, const ms_move &b) {
     if (a.to < b.to) return true;
     return false;
 }
+
+struct votecmp {
+    bool operator()(const ms_move &a, const ms_move &b) {
+        return ms_move_lt(a, b);
+    }
+};
 
 int intlen(int i) {
     if (i == 0) return 1;
@@ -387,19 +490,40 @@ int flip_waste(ms_game_state *gs) {
     return 0;
 }
 
-int go_through_stock(ms_game_state *gs, unsigned n, bool *reveal) {
-    // going through the stock is treated strangely, so recalculations are
-    // always required
+int go_through_stock(ms_game_state *gs, ms_rules *r, bool *reveal) {
+
+    /*
+     * Currently, going through the stock overrides the actual move provided by
+     * the voters, which means that future moves of these voters can't be used
+     * and as such all voters will have to be re-run regeardless of whether or
+     * not cards were actually revealed. `reveal` here is not really tracking if
+     * a card is revealed, but if voters should be reset.
+     */
     *reveal = true;
 
     if (gs->stock.size() == 0) {
         flip_waste(gs);
     }
 
-    unsigned turn_over = std::min(n, (unsigned) gs->stock.size());
+    /*
+     * FIXME: casting used here, but maybe it can be avoided?
+     */
+    unsigned turn_over = std::min(r->stock_deal_count,
+            (unsigned) gs->stock.size());
 
-    for (unsigned i = 0; i < turn_over; ++i) {
-        move_atop(&gs->stock, &gs->waste, 1u, reveal);
+    switch (r->stock_deal_method) {
+        case STOCK_TO_WASTE: {
+            for (unsigned i = 0; i < turn_over; ++i) {
+                move_atop(&gs->stock, &gs->waste, 1u, reveal);
+            }
+            break;
+        } case STOCK_TO_TABLEAU: {
+            for (ms_card_pile &p : gs->tableau) {
+                move_atop(&gs->stock, &p, 1u, reveal);
+            }
+        } default: {
+            assert(false);
+        }
     }
 
     return 0;
@@ -409,7 +533,7 @@ int make_move(ms_game_state *gs, ms_rules *r, ms_move *m, bool *reveal) {
     *reveal = false;
 
     if (m->stock) {
-        go_through_stock(gs, r->stock_deal_count, reveal);
+        go_through_stock(gs, r, reveal);
     } else {
         ms_card_pile *from = get_pile_by_index(gs, r, m->from);
         ms_card_pile *to = get_pile_by_index(gs, r, m->to);
@@ -429,6 +553,18 @@ char const *finished_state_str(finished_state f) {
     }
 }
 
+const char *bool_str(bool b) {
+    return b ? "true" : "false";
+}
+
+bool equal_moves(ms_move *a, ms_move *b) {
+    bool result =
+        !(ms_move_lt(*a, *b)) &&
+        !(ms_move_lt(*b, *a));
+
+    return result;
+}
+
 bool opposite_move(ms_move *a, ms_move *b) {
     if (!a || !b) {
         return false;
@@ -446,14 +582,21 @@ bool opposite_move(ms_move *a, ms_move *b) {
 }
 
 void run_loop(ms_game_state *gs, ms_rules *r, ms_settings *s,
-        std::vector<ms_move> *votes, finished_state *vote_results,
-        ms_move *previous_move, bool *card_revealed_last_move,
-        threadpool *thpool, thread_info *t_infos, ms_game_state *shuffled_states
-        ) {
+        bool *card_revealed_last_move, threadpool *thpool, vote *votes,
+        thread_info *t_infos, ms_game_state *shuffled_states) {
 
+    /*
+     * Create the thread_info structs and add a job to the threadpool for each
+     * one.
+     */
     for (unsigned i = 0; i < s->max_votes; ++i) {
-        if (vote_results[i] == SOLUTION_FOUND
-                && !votes[i].empty()
+
+        /*
+         * If this move sequence still represents the game being played it does
+         * not need to be overwritten.
+         */
+        if (votes[i].result == SOLUTION_FOUND
+                && !votes[i].moves.empty()
                 && !*card_revealed_last_move) {
             continue;
         }
@@ -464,22 +607,46 @@ void run_loop(ms_game_state *gs, ms_rules *r, ms_settings *s,
         t_infos[i].gs = &shuffled_states[i];
         t_infos[i].r = r;
         t_infos[i].s = s;
-        t_infos[i].move_buf = &votes[i];
-        t_infos[i].result = &vote_results[i];
+        t_infos[i].move_buf = &votes[i].moves;
+        t_infos[i].result = &votes[i].result;
 
         thpool_add_work(*thpool, (void (*)(void *)) &run_thread,
                 (void *) &t_infos[i]);
     }
 
+    /*
+     * Wait on all of the voters to complete.
+     */
     thpool_wait(*thpool);
 
-    std::map<ms_move, int> tallied_votes;
+    /*
+     * Print information about each voter.
+     */
+    debug("state\t\t\tmove\tstock\tmoves left\n");
     for (unsigned i = 0; i < s->max_votes; ++i) {
-        if (vote_results[i] == SOLUTION_FOUND) {
-            assert(!votes[i].empty());
+        if (votes[i].moves.empty()) {
+            debug("%s\t+x+->+\t+   \t%lu\n",
+                    finished_state_str(votes[i].result),
+                    votes[i].moves.size());
+        } else {
+            ms_move m = votes[i].moves.back();
 
-            ms_move vote = votes[i].back();
-            votes[i].pop_back();
+            debug("%s\t \t%dx%d->%d\t%s\t%lu\n",
+                    finished_state_str(votes[i].result),
+                    m.size, m.from, m.to, bool_str(m.stock),
+                    votes[i].moves.size());
+        }
+    }
+
+    /*
+     * Count the number of occurences votes for each move.
+     */
+    std::map<ms_move, int, votecmp> tallied_votes;
+    for (unsigned i = 0; i < s->max_votes; ++i) {
+        if (votes[i].result == SOLUTION_FOUND) {
+            assert(!votes[i].moves.empty());
+
+            ms_move vote = votes[i].moves.back();
 
             auto t = tallied_votes.find(vote);
             if (t == tallied_votes.end()) {
@@ -490,7 +657,10 @@ void run_loop(ms_game_state *gs, ms_rules *r, ms_settings *s,
         }
     }
 
-    ms_move *max_move;
+    /*
+     * Find the move with the most votes.
+     */
+    ms_move max_move;
     int max_votes = 0;
     for (auto &v : tallied_votes) {
         ms_move move = v.first;
@@ -499,17 +669,22 @@ void run_loop(ms_game_state *gs, ms_rules *r, ms_settings *s,
         debug("%u->%u(%u) has %d votes\n", move.from, move.to, move.size, vote);
 
         if (vote > max_votes) {
-            max_move = &move;
+            max_move = move;
             max_votes = vote;
         }
     }
 
     if (max_votes == 0) {
+
+        /*
+         * If no votes were cast, more information about the state of the system
+         * is printed, and no move is made.
+         */
         debug("no votes cast!\n");
         std::map<finished_state, int> res;
 
         for (unsigned i = 0; i < s->max_votes; ++i) {
-            finished_state f = vote_results[i];
+            finished_state f = votes[i].result;
             auto c = res.find(f);
             res[f] = (c == res.end()) ? 1 : (c->second + 1);
         }
@@ -519,12 +694,38 @@ void run_loop(ms_game_state *gs, ms_rules *r, ms_settings *s,
             debug("%s: %d\n", finished_state_str(p.first), p.second);
         }
     } else {
-        make_move(gs, r, max_move, card_revealed_last_move);
-        *previous_move = *max_move;
+        /*
+         * If at least one vote is cast, the move with the most votes in taken.
+         */
+        make_move(gs, r, &max_move, card_revealed_last_move);
+
+        /*
+         * The voters that made the popular vote have their move list trimmed,
+         * and to ensure that voters that made the popular vote are the only
+         * voters that don't need to recalculate their votes, the other voters
+         * are reset.
+         */
+        for (unsigned i = 0; i < s->max_votes; ++i) {
+            if (votes[i].result == SOLUTION_FOUND) {
+                if (equal_moves(&max_move, &votes[i].moves.back())) {
+                    votes[i].moves.pop_back();
+                } else {
+                    debug("voter %d is being reset\n", i);
+                    votes[i].result = CANCELLED;
+                }
+            }
+        }
     }
 }
 
+bool solved(ms_game_state *gs, ms_rules *r, ms_settings *s) {
+    assert(s->solved_func);
+    return s->solved_func(gs, r, s->user_data);
+}
+
 bool solvable(ms_game_state *gs, ms_rules *r, ms_settings *s) {
+    assert(s->thoughtful_run_func);
+
     finished_state fs = s->thoughtful_run_func(gs, r, s->user_data);
     bool result = fs == SOLUTION_FOUND;
 
@@ -538,24 +739,32 @@ bool solvable(ms_game_state *gs, ms_rules *r, ms_settings *s) {
 }
 
 int ms_run(ms_game_state *gs, ms_rules *r, ms_settings *s) {
-#define gimme_mem(t) ((t *) malloc(sizeof(t) * s->max_votes))
-    std::vector<ms_move> *votes = gimme_mem(std::vector<ms_move>);
-    finished_state *vote_results = gimme_mem(finished_state);
+
+    /*
+     * Here is where the memory required for storing all of the information
+     * about the maximum number of voters is allocated. Currently the largest
+     * memory quantity that could possibly be required (the case where the max
+     * number of votes is needed), although if this number is significantly
+     * larger than the usual quantity required then maybe this should start low
+     * and be stepped up only if necessary.
+     */
+#   define gimme_mem(t) ((t *) malloc(sizeof(t) * s->max_votes))
+
+    std::vector<vote> votes(s->max_votes);;
+
     thread_info *t_infos = gimme_mem(thread_info);
     ms_game_state *states = gimme_mem(ms_game_state);
 
     threadpool thpool = thpool_init(s->max_concurrent_threads);
 
     bool reveal = true;
-    ms_move previous_move;
-    previous_move.stock = true;
-    while (!s->solved_func(gs, r, s->user_data)) {
-        if (s->thoughtful_run_func && !solvable(gs, r, s)) {
+
+    while (!solved(gs, r, s)) {
+        if (!solvable(gs, r, s)) {
             return 1;
         }
 
-        run_loop(gs, r, s, votes, vote_results, &previous_move,
-                &reveal, &thpool, t_infos, states);
+        run_loop(gs, r, s, &reveal, &thpool, &votes[0], t_infos, states);
     }
     debug("successful seed: %lu\n", seed);
     return 0;
@@ -606,6 +815,66 @@ ms_rules fetch_default_rules() {
     // dr.accordion_policy is an empty vector
 
     return dr;
+}
+
+void print_rules(ms_rules *r, FILE *fh = stdout) {
+    fprintf(fh, "tableau size: %u\n"
+            "build policy: %s\n"
+            "spaces policy: %s\n"
+            "move built group: %s\n"
+            "built group policy: %s\n"
+            "deck count: %u\n"
+            "max rank: %u\n"
+            "hole: %s\n"
+            "foundations: %s\n"
+            "foundations init cards: %s\n"
+            "foundations base: %u\n"
+            "foundations removable: %s\n"
+            "foundations only accept complete piles: %s\n"
+            "diagonal deal: %s\n"
+            "cell count: %u\n"
+            "cells pre-filled: %s\n"
+            "cards in stock: %u\n"
+            "stock deal method: %s\n"
+            "stock deal count: %u\n"
+            "stock redeal: %s\n"
+            "cards in reserve: %u\n"
+            "reserve stacked: %s\n"
+            "face up policy: %s\n"
+            "sequences: %u\n"
+            "sequence direction: %s\n"
+            "sequence build policy: %s\n"
+            "sequence fixed suit: %s\n"
+            "cards in accordion: %u\n"
+            "(TODO: accordion moves)",
+        r->tableau_size,
+        build_policy_str(r->build_policy),
+        spaces_policy_str(r->spaces_policy),
+        built_group_str(r->move_built_group),
+        build_policy_str(r->built_group_policy),
+        r->deck_count,
+        r->max_rank,
+        bool_str(r->hole_present),
+        bool_str(r->foundations_present),
+        bool_str(r->foundations_init_cards),
+        r->foundations_base,
+        bool_str(r->foundations_removable),
+        bool_str(r->foundations_only_comp_piles),
+        bool_str(r->diagonal_deal),
+        r->cells,
+        bool_str(r->cells_pre_filled),
+        r->stock_size,
+        stock_deal_str(r->stock_deal_method),
+        r->stock_deal_count,
+        bool_str(r->stock_redeal),
+        r->reserve_size,
+        bool_str(r->reserve_stacked),
+        face_up_policy_str(r->face_up_policy),
+        r->sequence_count,
+        direction_str(r->sequence_direction),
+        build_policy_str(r->sequence_build_policy),
+        bool_str(r->sequence_fixed_suit),
+        r->accordion_size);
 }
 
 int make_deck(ms_rules *r, ms_card_pile *buf) {
@@ -729,6 +998,7 @@ ms_game_state random_game_state(long user_seed, ms_rules *r) {
             for (unsigned i = 0; i < r->tableau_size; ++i) {
                 for (unsigned j = 0; j <= i; ++j) {
                     ms_card c = deck.back();
+                    c.hidden = r->face_up_policy != ALL_CARDS_FACE_UP;
                     deck.pop_back();
                     gs.tableau[i].push_back(c);
                 }
@@ -740,7 +1010,8 @@ ms_game_state random_game_state(long user_seed, ms_rules *r) {
                 for (auto &t : gs.tableau) {
                     ms_card c = deck.back();
                     deck.pop_back();
-                    c.hidden = i != deep - 1;
+                    c.hidden = i != deep - 1
+                        && r->face_up_policy != ALL_CARDS_FACE_UP;
                     t.push_back(c);
                 }
             }

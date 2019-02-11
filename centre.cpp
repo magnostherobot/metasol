@@ -501,7 +501,7 @@ ms_settings get_settings(user_data *d) {
 
     s.reserved_move_count = 10u;
     s.max_concurrent_threads = 24u;
-    s.max_votes = 1000u;
+    s.max_votes = 10u;
 
     s.user_data = (void *) d;
 
@@ -511,9 +511,9 @@ ms_settings get_settings(user_data *d) {
 user_data get_user_data() {
     user_data d;
 
-    d.run_cache_size = 1024u;
+    d.run_cache_size = 1000000u;
     d.run_timeout = 20000u;
-    d.thoughtful_run_timeout = 20000u;
+    d.thoughtful_run_timeout = 2000000u;
 
     return d;
 }
@@ -589,13 +589,16 @@ int assign_rule_prim(jsmntok_t *key, const char *name, PRIM_TYPE type,
 int assign_rule_enum(jsmntok_t *key, const char *name, char (*func)(char *),
         char *rule, char *js) {
     long length = key->end - key->start;
-    char *str = &js[key->start];
-    if (!strncmp(str, name, length)) {
+    char *key_str = &js[key->start];
+    if (!strncmp(key_str, name, length)) {
         jsmntok_t *val = next_tok(key);
         assert(val->type == JSMN_STRING);
         char *buf = (char *) malloc(length + 1);
-        strncpy(buf, str, length);
-        buf[length] = '\0';
+
+        char *val_str = &js[val->start];
+        long val_length = val->end - val->start;
+        strncpy(buf, val_str, val_length);
+        buf[val_length] = '\0';
         *rule = func(buf);
         return 2;
     } else {
@@ -694,8 +697,12 @@ ms_rules json_rules(const char *filename) {
                 arp("foundations", BOOL_TYPE, &r.foundations_present);
                 arp("foundations removable", BOOL_TYPE,
                         &r.foundations_removable);
+
                 arp("foundations accept only complete piles", BOOL_TYPE,
                         &r.foundations_only_comp_piles);
+                arp("foundations only complete pile moves", BOOL_TYPE,
+                        &r.foundations_only_comp_piles);
+
                 arp("diagonal deal", BOOL_TYPE, &r.diagonal_deal);
                 arp("number of cells", NUMBER_TYPE, &r.cells);
                 arp("cells pre-filled", BOOL_TYPE, &r.cells_pre_filled);
@@ -707,6 +714,14 @@ ms_rules json_rules(const char *filename) {
                 arp("cards in sequence", NUMBER_TYPE, &r.sequence_count);
                 arp("sequence fixed suit", BOOL_TYPE, &r.sequence_fixed_suit);
 
+                /*
+                 * FIXME
+                 * Doing some really sketchy casting here, but it should work:
+                 * enums have to be at least a char in size, and these enum
+                 * values should never end up being more than a char in value.
+                 * In fact, they shouldn't ever touch the eighth bit (which
+                 * could cause signed-casting problems).
+                 */
 #               define are(n, f, p) { \
                     x = assign_rule_enum(tok, n, (char (*)(char *)) f, \
                             (char *) p, buf); \
@@ -720,7 +735,10 @@ ms_rules json_rules(const char *filename) {
                         &r.built_group_policy);
                 are("foundations initialised", str_foundations_init,
                         &r.foundations_init_cards);
+
+                are("stock deal type", str_stock_deal, &r.stock_deal_method);
                 are("stock deal method", str_stock_deal, &r.stock_deal_method);
+
                 are("face up cards", str_face_up_policy, &r.face_up_policy);
                 are("face up policy", str_face_up_policy, &r.face_up_policy);
                 are("sequence direction", str_direction, &r.sequence_direction);
