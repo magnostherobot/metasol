@@ -1011,6 +1011,13 @@ ms_game_state random_game_state(long user_seed, ms_rules *r) {
         for (unsigned i = 0; i < r->stock_size; ++i) {
             ms_card c = deck.back();
             deck.pop_back();
+
+            /*
+             * If stock redeals are allowed, going through the stock once
+             * reveals its contents without any other consequences.
+             */
+            c.hidden = !r->stock_redeal;
+
             gs.stock.push_back(c);
         }
         gs.stock.back().hidden = false;
