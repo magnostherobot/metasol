@@ -564,9 +564,81 @@ bool opposite_move(ms_move *a, ms_move *b) {
     }
 }
 
+void move_decided(ms_game_state *gs, ms_rules *r, ms_move *move, bool *reveal,
+        vote *votes, unsigned vote_count) {
+
+    /*
+     * If at least one vote is cast, the move with the most votes in taken.
+     */
+    *reveal = make_move(gs, r, move);
+
+    if (*reveal) {
+
+        debug("card revealed; resetting all voters\n");
+
+        /*
+         * Revealing a card means that all the voters have to be reset.
+         */
+        for (unsigned i = 0; i < vote_count; ++i) {
+            votes[i].result = CANCELLED;
+        }
+    } else {
+
+        /*
+         * The voters that made the popular vote have their move list
+         * trimmed, and to ensure that voters that made the popular vote are
+         * the only voters that don't need to recalculate their votes, the
+         * other voters are reset.
+         */
+        for (unsigned i = 0; i < vote_count; ++i) {
+            if (votes[i].result == SOLUTION_FOUND) {
+                if (equal_moves(move, &votes[i].moves.back())) {
+                    votes[i].moves.pop_back();
+                } else {
+                    debug("voter %d is being reset\n", i);
+                    votes[i].result = CANCELLED;
+                }
+            }
+        }
+    }
+}
+
 void run_loop(ms_game_state *gs, ms_rules *r, ms_settings *s,
         bool *card_revealed_last_move, threadpool *thpool, vote *votes,
         thread_info *t_infos, ms_game_state *shuffled_states) {
+
+    /*
+     * If a majority of voters already agree on a move, running other voters is
+     * a waste of time.
+     */
+    std::map<ms_move, unsigned, votecmp> prerun_votes;
+    for (unsigned i = 0; i < s->max_votes; ++i) {
+        if (votes[i].result == SOLUTION_FOUND) {
+            if (votes[i].moves.empty()) {
+                continue;
+            }
+
+            ms_move move = votes[i].moves.back();
+
+            auto t = prerun_votes.find(move);
+            if (t == prerun_votes.end()) {
+                prerun_votes[move] = 1;
+            } else {
+                unsigned v = t->second + 1;
+
+                if (v > s->max_votes / 2) {
+                    ms_move m = t->first;
+                    move_decided(gs, r, &m, card_revealed_last_move,
+                            votes, s->max_votes);
+
+                    /* FIXME: bad control flow */
+                    return;
+                } else {
+                    prerun_votes[move] = v;
+                }
+            }
+        }
+    }
 
     /*
      * Create the thread_info structs and add a job to the threadpool for each
@@ -578,8 +650,7 @@ void run_loop(ms_game_state *gs, ms_rules *r, ms_settings *s,
          * If this move sequence still represents the game being played it does
          * not need to be overwritten.
          */
-        if (votes[i].result == SOLUTION_FOUND
-                && !votes[i].moves.empty()) {
+        if (votes[i].result == SOLUTION_FOUND && !votes[i].moves.empty()) {
             continue;
         }
 
@@ -675,41 +746,8 @@ void run_loop(ms_game_state *gs, ms_rules *r, ms_settings *s,
             debug("%s: %d\n", finished_state_str(p.first), p.second);
         }
     } else {
-
-        /*
-         * If at least one vote is cast, the move with the most votes in taken.
-         */
-        *card_revealed_last_move = make_move(gs, r, &max_move);
-
-        if (*card_revealed_last_move) {
-
-            debug("card revealed; resetting all voters\n");
-
-            /*
-             * Revealing a card means that all the voters have to be reset.
-             */
-            for (unsigned i = 0; i < s->max_votes; ++i) {
-                votes[i].result = CANCELLED;
-            }
-        } else {
-
-            /*
-             * The voters that made the popular vote have their move list
-             * trimmed, and to ensure that voters that made the popular vote are
-             * the only voters that don't need to recalculate their votes, the
-             * other voters are reset.
-             */
-            for (unsigned i = 0; i < s->max_votes; ++i) {
-                if (votes[i].result == SOLUTION_FOUND) {
-                    if (equal_moves(&max_move, &votes[i].moves.back())) {
-                        votes[i].moves.pop_back();
-                    } else {
-                        debug("voter %d is being reset\n", i);
-                        votes[i].result = CANCELLED;
-                    }
-                }
-            }
-        }
+        move_decided(gs, r, &max_move, card_revealed_last_move, votes,
+                s->max_votes);
     }
 }
 
@@ -746,6 +784,9 @@ int ms_run(ms_game_state *gs, ms_rules *r, ms_settings *s) {
 #   define gimme_mem(t) ((t *) malloc(sizeof(t) * s->max_votes))
 
     std::vector<vote> votes(s->max_votes);;
+    for (vote &v : votes) {
+        v.result = CANCELLED;
+    }
 
     thread_info *t_infos = gimme_mem(thread_info);
     ms_game_state *states = gimme_mem(ms_game_state);
@@ -806,8 +847,8 @@ ms_rules fetch_default_rules() {
     dr.sequence_fixed_suit = false;
 
     dr.accordion_size = 0;
-    // dr.accordion_moves is an empty vector
-    // dr.accordion_policy is an empty vector
+    /* dr.accordion_moves is an empty vector */
+    /* dr.accordion_policy is an empty vector */
 
     return dr;
 }
