@@ -2,11 +2,14 @@
 #include <map>
 #include <algorithm>
 
+#include <err.h>
+
 #include "solvitaire/headers/api.h"
 #include "docopt/docopt.h"
 #include "jsmn/jsmn.h"
 
 #include "metasol.h"
+#include "debug.h"
 
 static const char USAGE[] =
 R"(centre - a metasol instance.
@@ -363,6 +366,35 @@ finished_state convert_result(solver::result::type r) {
     }
 }
 
+unsigned calculate_stock_moves(int n, unsigned *stock, unsigned *waste,
+        unsigned deal) {
+    unsigned stock_waste = *stock + *waste;
+
+    unsigned moves = 0;
+    while (n != 0) {
+        if (*stock == 0) {
+            *stock = stock_waste;
+            *waste = 0;
+        }
+
+        if (n < 0) {
+            n += stock_waste;
+            continue;
+        }
+
+        unsigned m = std::min(deal, *stock);
+        *stock -= m;
+        *waste += m;
+        n -= m;
+        ++moves;
+    }
+
+    assert(*waste > 0);
+    *waste -= 1u;
+
+    return moves;
+}
+
 /**
  * The function that is called by every voter, to get its vote.
  */
@@ -379,18 +411,61 @@ finished_state run_single(ms_game_state *gs, ms_rules *r,
     if (result == SOLUTION_FOUND) {
         unsigned n = std::min(move_count, (unsigned) ml.size());
         moves->clear();
-        moves->resize(n);
-        int skip_first = is_dud_move(&ml[0]) ? 1 : 0;
-        std::transform(ml.begin() + skip_first,
-                ml.begin() + skip_first + move_count,
-                moves->begin(),
-                [gs, r](move m) -> ms_move {
-                    ms_move out;
-                    convert_move(gs, r, &m, &out);
-                    return out;
-                });
-        std::reverse(moves->begin(), moves->end());
+
+        unsigned stock = gs->stock.size();
+        unsigned waste = gs->waste.size();
+
+        /*
+         * FIXME: This section counts the number of converted moves rather than
+         * the number of moves produced during converting. This shouldn't be a
+         * problem (for now) but should be changed at some point.
+         */
+        for (unsigned i = 0; i < n; ++i) {
+            move *m = &ml[i];
+            if (is_dud_move(m)) {
+                continue;
+            }
+
+            switch (m->type) {
+                case move::mtype::regular:
+                case move::mtype::built_group: {
+                    ms_move rm;
+                    rm.from = m->from;
+                    rm.to = m->to;
+                    rm.size = m->count;
+                    rm.stock = false;
+
+                    moves->push_back(rm);
+                    break;
+                } case move::mtype::stock_k_plus: {
+                    int cards_moved = m->count;
+                    unsigned stock_moves = calculate_stock_moves(cards_moved,
+                            &stock, &waste, r->stock_deal_count);
+
+                    for (unsigned j = 0; j < stock_moves; ++j) {
+                        ms_move sm;
+                        sm.stock = true;
+
+                        moves->push_back(sm);
+                    }
+
+                    ms_move kpm;
+                    kpm.from = get_waste_index(r);
+                    kpm.to = m->to;
+                    kpm.size = 1u;
+                    kpm.stock = false;
+
+                    moves->push_back(kpm);
+                    break;
+                } default: {
+                    errx(EXIT_FAILURE, "unimplmented move type %s",
+                            mtype_str(m->type));
+                }
+            }
+        }
     }
+
+    std::reverse(moves->begin(), moves->end());
 
     return result;
 }
@@ -499,7 +574,7 @@ ms_settings get_settings(user_data *d) {
     s.thoughtful_run_func = &thoughtful_run;
     s.solved_func = &solved;
 
-    s.reserved_move_count = 10u;
+    s.reserved_move_count = 30u;
     s.max_concurrent_threads = 24u;
     s.max_votes = 10u;
 
@@ -745,7 +820,7 @@ ms_rules json_rules(const char *filename) {
                 are("sequence build policy", str_build_policy,
                         &r.sequence_build_policy);
 
-                fprintf(stderr, "%s\n", &buf[tok->start]);
+                debug("%s\n", &buf[tok->start]);
                 assert(false);
             } default: {
                 assert(false);
@@ -813,7 +888,7 @@ ms_game_state json_game_state(const char *filename) {
 
                 assert(false);
             } default: {
-                fprintf(stderr, "%d\n", tok->type);
+                debug("%d\n", tok->type);
                 assert(false);
             }
         }

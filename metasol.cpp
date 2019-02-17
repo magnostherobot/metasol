@@ -8,12 +8,7 @@
 #include "thpool/thpool.h"
 
 #include "metasol.h"
-
-#ifndef NDEBUG
-# define debug(...) fprintf(stderr, __VA_ARGS__)
-#else
-# define debug(...)
-#endif
+#include "debug.h"
 
 card_suit SUITS[4] = { HEARTS, SPADES, CLUBS, DIAMONDS };
 
@@ -466,19 +461,18 @@ int intlen(int i) {
     return floor(log10(abs(i))) + 1;
 }
 
-int move_atop(ms_card_pile *f, ms_card_pile *t, unsigned count, bool *reveal) {
+bool move_atop(ms_card_pile *f, ms_card_pile *t, unsigned count) {
     ms_card_pile temp(f->end() - count, f->end());
     f->erase(f->end() - count, f->end());
     t->insert(t->end(), temp.begin(), temp.end());
 
     if (!f->empty()) {
-        if (reveal) {
-            *reveal = *reveal || f->back().hidden;
-        }
+        bool result = f->back().hidden;
         f->back().hidden = false;
+        return result;
+    } else {
+        return false;
     }
-
-    return 0;
 }
 
 int flip_waste(ms_game_state *gs) {
@@ -490,17 +484,7 @@ int flip_waste(ms_game_state *gs) {
     return 0;
 }
 
-int go_through_stock(ms_game_state *gs, ms_rules *r, bool *reveal) {
-
-    /*
-     * Currently, going through the stock overrides the actual move provided by
-     * the voters, which means that future moves of these voters can't be used
-     * and as such all voters will have to be re-run regeardless of whether or
-     * not cards were actually revealed. `reveal` here is not really tracking if
-     * a card is revealed, but if voters should be reset.
-     */
-    *reveal = true;
-
+bool go_through_stock(ms_game_state *gs, ms_rules *r) {
     if (gs->stock.size() == 0) {
         flip_waste(gs);
     }
@@ -511,35 +495,34 @@ int go_through_stock(ms_game_state *gs, ms_rules *r, bool *reveal) {
     unsigned turn_over = std::min(r->stock_deal_count,
             (unsigned) gs->stock.size());
 
+    bool result = false;
     switch (r->stock_deal_method) {
         case STOCK_TO_WASTE: {
             for (unsigned i = 0; i < turn_over; ++i) {
-                move_atop(&gs->stock, &gs->waste, 1u, reveal);
+                bool reveal = move_atop(&gs->stock, &gs->waste, 1u);
+                result = result || reveal;
             }
-            break;
+            return result;
         } case STOCK_TO_TABLEAU: {
             for (ms_card_pile &p : gs->tableau) {
-                move_atop(&gs->stock, &p, 1u, reveal);
+                bool reveal = move_atop(&gs->stock, &p, 1u);
+                result = result || reveal;
             }
+            return result;
         } default: {
             assert(false);
         }
     }
-
-    return 0;
 }
 
-int make_move(ms_game_state *gs, ms_rules *r, ms_move *m, bool *reveal) {
-    *reveal = false;
-
+bool make_move(ms_game_state *gs, ms_rules *r, ms_move *m) {
     if (m->stock) {
-        go_through_stock(gs, r, reveal);
+        return go_through_stock(gs, r);
     } else {
         ms_card_pile *from = get_pile_by_index(gs, r, m->from);
         ms_card_pile *to = get_pile_by_index(gs, r, m->to);
-        move_atop(from, to, m->size, reveal);
+        return move_atop(from, to, m->size);
     }
-    return 0;
 }
 
 char const *finished_state_str(finished_state f) {
@@ -596,8 +579,7 @@ void run_loop(ms_game_state *gs, ms_rules *r, ms_settings *s,
          * not need to be overwritten.
          */
         if (votes[i].result == SOLUTION_FOUND
-                && !votes[i].moves.empty()
-                && !*card_revealed_last_move) {
+                && !votes[i].moves.empty()) {
             continue;
         }
 
@@ -622,27 +604,26 @@ void run_loop(ms_game_state *gs, ms_rules *r, ms_settings *s,
     /*
      * Print information about each voter.
      */
-    debug("state\t\t\tmove\tstock\tmoves left\n");
+    debug("state\t\t\tmove\tmoves left\n");
     for (unsigned i = 0; i < s->max_votes; ++i) {
-        if (votes[i].moves.empty()) {
-            debug("%s\t+x+->+\t+   \t%lu\n",
-                    finished_state_str(votes[i].result),
-                    votes[i].moves.size());
-        } else {
-            ms_move m = votes[i].moves.back();
-
-            debug("%s\t \t%dx%d->%d\t%s\t%lu\n",
-                    finished_state_str(votes[i].result),
-                    m.size, m.from, m.to, bool_str(m.stock),
-                    votes[i].moves.size());
-        }
     }
 
     /*
-     * Count the number of occurences votes for each move.
+     * Count the number of occurences of votes for each move.
      */
     std::map<ms_move, int, votecmp> tallied_votes;
     for (unsigned i = 0; i < s->max_votes; ++i) {
+        if (votes[i].moves.empty()) {
+            debug("%-15s\n", finished_state_str(votes[i].result));
+        } else {
+            ms_move m = votes[i].moves.back();
+
+            debug("%-15s %-10s    %3lu\n",
+                    finished_state_str(votes[i].result),
+                    move_str_buf(&m),
+                    votes[i].moves.size());
+        }
+
         if (votes[i].result == SOLUTION_FOUND) {
             assert(!votes[i].moves.empty());
 
@@ -666,7 +647,7 @@ void run_loop(ms_game_state *gs, ms_rules *r, ms_settings *s,
         ms_move move = v.first;
         int vote = v.second;
 
-        debug("%u->%u(%u) has %d votes\n", move.from, move.to, move.size, vote);
+        debug("%s has %d votes\n", move_str_buf(&move), vote);
 
         if (vote > max_votes) {
             max_move = move;
@@ -694,24 +675,38 @@ void run_loop(ms_game_state *gs, ms_rules *r, ms_settings *s,
             debug("%s: %d\n", finished_state_str(p.first), p.second);
         }
     } else {
+
         /*
          * If at least one vote is cast, the move with the most votes in taken.
          */
-        make_move(gs, r, &max_move, card_revealed_last_move);
+        *card_revealed_last_move = make_move(gs, r, &max_move);
 
-        /*
-         * The voters that made the popular vote have their move list trimmed,
-         * and to ensure that voters that made the popular vote are the only
-         * voters that don't need to recalculate their votes, the other voters
-         * are reset.
-         */
-        for (unsigned i = 0; i < s->max_votes; ++i) {
-            if (votes[i].result == SOLUTION_FOUND) {
-                if (equal_moves(&max_move, &votes[i].moves.back())) {
-                    votes[i].moves.pop_back();
-                } else {
-                    debug("voter %d is being reset\n", i);
-                    votes[i].result = CANCELLED;
+        if (*card_revealed_last_move) {
+
+            debug("card revealed; resetting all voters\n");
+
+            /*
+             * Revealing a card means that all the voters have to be reset.
+             */
+            for (unsigned i = 0; i < s->max_votes; ++i) {
+                votes[i].result = CANCELLED;
+            }
+        } else {
+
+            /*
+             * The voters that made the popular vote have their move list
+             * trimmed, and to ensure that voters that made the popular vote are
+             * the only voters that don't need to recalculate their votes, the
+             * other voters are reset.
+             */
+            for (unsigned i = 0; i < s->max_votes; ++i) {
+                if (votes[i].result == SOLUTION_FOUND) {
+                    if (equal_moves(&max_move, &votes[i].moves.back())) {
+                        votes[i].moves.pop_back();
+                    } else {
+                        debug("voter %d is being reset\n", i);
+                        votes[i].result = CANCELLED;
+                    }
                 }
             }
         }
