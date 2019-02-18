@@ -461,12 +461,14 @@ int intlen(int i) {
     return floor(log10(abs(i))) + 1;
 }
 
-bool move_atop(ms_card_pile *f, ms_card_pile *t, unsigned count) {
+bool move_atop(ms_card_pile *f, ms_card_pile *t, unsigned count,
+        bool reveal_next) {
+
     ms_card_pile temp(f->end() - count, f->end());
     f->erase(f->end() - count, f->end());
     t->insert(t->end(), temp.begin(), temp.end());
 
-    if (!f->empty()) {
+    if (reveal_next && !f->empty()) {
         bool result = f->back().hidden;
         f->back().hidden = false;
         return result;
@@ -486,6 +488,7 @@ int flip_waste(ms_game_state *gs) {
 
 bool go_through_stock(ms_game_state *gs, ms_rules *r) {
     if (gs->stock.size() == 0) {
+        assert(r->stock_redeal);
         flip_waste(gs);
     }
 
@@ -499,13 +502,19 @@ bool go_through_stock(ms_game_state *gs, ms_rules *r) {
     switch (r->stock_deal_method) {
         case STOCK_TO_WASTE: {
             for (unsigned i = 0; i < turn_over; ++i) {
-                bool reveal = move_atop(&gs->stock, &gs->waste, 1u);
+                bool reveal = move_atop(&gs->stock, &gs->waste, 1u, true);
                 result = result || reveal;
             }
             return result;
         } case STOCK_TO_TABLEAU: {
             for (ms_card_pile &p : gs->tableau) {
-                bool reveal = move_atop(&gs->stock, &p, 1u);
+                if (gs->stock.empty()) {
+                    break;
+                }
+
+                bool reveal = gs->stock.back().hidden;
+                gs->stock.back().hidden = false;
+                move_atop(&gs->stock, &p, 1u, false);
                 result = result || reveal;
             }
             return result;
@@ -521,7 +530,7 @@ bool make_move(ms_game_state *gs, ms_rules *r, ms_move *m) {
     } else {
         ms_card_pile *from = get_pile_by_index(gs, r, m->from);
         ms_card_pile *to = get_pile_by_index(gs, r, m->to);
-        return move_atop(from, to, m->size);
+        return move_atop(from, to, m->size, true);
     }
 }
 
@@ -564,15 +573,15 @@ bool opposite_move(ms_move *a, ms_move *b) {
     }
 }
 
-void move_decided(ms_game_state *gs, ms_rules *r, ms_move *move, bool *reveal,
-        vote *votes, unsigned vote_count) {
+void move_decided(ms_game_state *gs, ms_rules *r, ms_move *move, vote *votes,
+        unsigned vote_count) {
 
     /*
-     * If at least one vote is cast, the move with the most votes in taken.
+     * If at least one vote is cast, the move with the most votes is taken.
      */
-    *reveal = make_move(gs, r, move);
+    bool reveal = make_move(gs, r, move);
 
-    if (*reveal) {
+    if (reveal) {
 
         debug("card revealed; resetting all voters\n");
 
@@ -603,151 +612,90 @@ void move_decided(ms_game_state *gs, ms_rules *r, ms_move *move, bool *reveal,
     }
 }
 
-void run_loop(ms_game_state *gs, ms_rules *r, ms_settings *s,
-        bool *card_revealed_last_move, threadpool *thpool, vote *votes,
-        thread_info *t_infos, ms_game_state *shuffled_states) {
+bool find_majority_move(vote *v, unsigned vote_count, ms_move *m) {
 
-    /*
-     * If a majority of voters already agree on a move, running other voters is
-     * a waste of time.
-     */
-    std::map<ms_move, unsigned, votecmp> prerun_votes;
-    for (unsigned i = 0; i < s->max_votes; ++i) {
-        if (votes[i].result == SOLUTION_FOUND) {
-            if (votes[i].moves.empty()) {
-                continue;
-            }
+    std::map<ms_move, unsigned, votecmp> votes;
+    for (unsigned i = 0; i < vote_count; ++i) {
+        if (v[i].result == SOLUTION_FOUND && !v[i].moves.empty()) {
+            ms_move move = v[i].moves.back();
 
-            ms_move move = votes[i].moves.back();
-
-            auto t = prerun_votes.find(move);
-            if (t == prerun_votes.end()) {
-                prerun_votes[move] = 1;
+            auto t = votes.find(move);
+            if (t == votes.end()) {
+                votes[move] = 1;
             } else {
-                unsigned v = t->second + 1;
+                unsigned x = t->second + 1;
 
-                if (v > s->max_votes / 2) {
-                    ms_move m = t->first;
-                    move_decided(gs, r, &m, card_revealed_last_move,
-                            votes, s->max_votes);
-
-                    /* FIXME: bad control flow */
-                    return;
+                if (x > vote_count / 2) {
+                    *m = t->first;
+                    return true;
                 } else {
-                    prerun_votes[move] = v;
+                    votes[move] = x;
                 }
             }
         }
     }
 
-    /*
-     * Create the thread_info structs and add a job to the threadpool for each
-     * one.
-     */
-    for (unsigned i = 0; i < s->max_votes; ++i) {
+    return false;
+}
+
+void run_new_voters(ms_game_state *gs, ms_rules *r, ms_settings *s,
+        threadpool *thpool, ms_game_state *ss, vote *v, thread_info *ti,
+        unsigned n) {
+
+    for (unsigned i = 0; i < n; ++i) {
 
         /*
-         * If this move sequence still represents the game being played it does
-         * not need to be overwritten.
+         * Move sequences that still represent the game need not be overwritten.
          */
-        if (votes[i].result == SOLUTION_FOUND && !votes[i].moves.empty()) {
-            continue;
+        if (v[i].result != SOLUTION_FOUND || v[i].moves.empty()) {
+            ss[i] = *gs;
+            shuffle_hidden(&ss[i]);
+
+            ti[i].gs = &ss[i];
+            ti[i].r = r;
+            ti[i].s = s;
+            ti[i].move_buf = &v[i].moves;
+            ti[i].result = &v[i].result;
+
+            thpool_add_work(*thpool, (void (*)(void *)) &run_thread,
+                    (void *) &ti[i]);
         }
-
-        shuffled_states[i] = *gs;
-        shuffle_hidden(&shuffled_states[i]);
-
-        t_infos[i].gs = &shuffled_states[i];
-        t_infos[i].r = r;
-        t_infos[i].s = s;
-        t_infos[i].move_buf = &votes[i].moves;
-        t_infos[i].result = &votes[i].result;
-
-        thpool_add_work(*thpool, (void (*)(void *)) &run_thread,
-                (void *) &t_infos[i]);
     }
+}
 
-    /*
-     * Wait on all of the voters to complete.
-     */
-    thpool_wait(*thpool);
+bool find_modal_move(vote *v, unsigned n, ms_move *m) {
 
-    /*
-     * Print information about each voter.
-     */
-    debug("state\t\t\tmove\tmoves left\n");
-    for (unsigned i = 0; i < s->max_votes; ++i) {
-    }
+    std::map<ms_move, unsigned, votecmp> votes;
+    for (unsigned i = 0; i < n; ++i) {
+        if (v[i].result == SOLUTION_FOUND) {
+            assert(!v[i].moves.empty());
 
-    /*
-     * Count the number of occurences of votes for each move.
-     */
-    std::map<ms_move, int, votecmp> tallied_votes;
-    for (unsigned i = 0; i < s->max_votes; ++i) {
-        if (votes[i].moves.empty()) {
-            debug("%-15s\n", finished_state_str(votes[i].result));
-        } else {
-            ms_move m = votes[i].moves.back();
+            ms_move move = v[i].moves.back();
 
-            debug("%-15s %-10s    %3lu\n",
-                    finished_state_str(votes[i].result),
-                    move_str_buf(&m),
-                    votes[i].moves.size());
-        }
-
-        if (votes[i].result == SOLUTION_FOUND) {
-            assert(!votes[i].moves.empty());
-
-            ms_move vote = votes[i].moves.back();
-
-            auto t = tallied_votes.find(vote);
-            if (t == tallied_votes.end()) {
-                tallied_votes[vote] = 1;
+            auto t = votes.find(move);
+            if (t == votes.end()) {
+                votes[move] = 1;
             } else {
-                tallied_votes[vote] = t->second + 1;
+                votes[move] = t->second + 1;
             }
         }
     }
 
-    /*
-     * Find the move with the most votes.
-     */
-    ms_move max_move;
-    int max_votes = 0;
-    for (auto &v : tallied_votes) {
-        ms_move move = v.first;
-        int vote = v.second;
+    struct { ms_move m; unsigned c; } max;
+    max.c = 0;
 
-        debug("%s has %d votes\n", move_str_buf(&move), vote);
-
-        if (vote > max_votes) {
-            max_move = move;
-            max_votes = vote;
+    for (auto &vote : votes) {
+        if (vote.second > max.c) {
+            max.m = vote.first;
+            max.c = vote.second;
         }
     }
 
-    if (max_votes == 0) {
-
-        /*
-         * If no votes were cast, more information about the state of the system
-         * is printed, and no move is made.
-         */
-        debug("no votes cast!\n");
-        std::map<finished_state, int> res;
-
-        for (unsigned i = 0; i < s->max_votes; ++i) {
-            finished_state f = votes[i].result;
-            auto c = res.find(f);
-            res[f] = (c == res.end()) ? 1 : (c->second + 1);
-        }
-
-        debug("results:\n");
-        for (auto &p : res) {
-            debug("%s: %d\n", finished_state_str(p.first), p.second);
-        }
+    if (max.c == 0) {
+        return false;
     } else {
-        move_decided(gs, r, &max_move, card_revealed_last_move, votes,
-                s->max_votes);
+        *m = max.m;
+        return true;
     }
 }
 
@@ -769,6 +717,80 @@ bool solvable(ms_game_state *gs, ms_rules *r, ms_settings *s) {
     }
 
     return result;
+}
+
+enum solve_status {
+    KEEP_GOING,
+    SOLVED,
+    UNSOLVABLE
+};
+
+solve_status loop_check(ms_game_state *gs, ms_rules *r, ms_settings *s) {
+    if (solved(gs, r, s)) {
+        return SOLVED;
+    } else if (solvable(gs, r, s)) {
+        return KEEP_GOING;
+    } else {
+        return UNSOLVABLE;
+    }
+}
+
+solve_status run_loop(ms_game_state *gs, ms_rules *r, ms_settings *s,
+        threadpool *thpool, vote *votes, thread_info *t_infos,
+        ms_game_state *shuffled_states) {
+
+    unsigned vote_count = s->max_votes;
+    ms_move m;
+
+    /*
+     * If a majority of voters already agree on a move, running other voters is
+     * a waste of time.
+     */
+    bool mm = false;
+    while (find_majority_move(votes, vote_count, &m)) {
+        mm = true;
+        debug("majority move found\n");
+        move_decided(gs, r, &m, votes, vote_count);
+    }
+    if (mm) {
+        return loop_check(gs, r, s);
+    }
+
+    /*
+     * Set up the thread_info structs and add a job to the threadpool for each
+     * one.
+     */
+    run_new_voters(gs, r, s, thpool, shuffled_states, votes, t_infos,
+            vote_count);
+
+    /*
+     * Wait on all of the voters to complete.
+     */
+    thpool_wait(*thpool);
+
+    /*
+     * Print information about each voter.
+     */
+    debug("state\t\t\tmove\tmoves left\n");
+    for (unsigned i = 0; i < s->max_votes; ++i) {
+        if (votes[i].moves.empty()) {
+            debug("%-15s\n", finished_state_str(votes[i].result));
+        } else {
+            ms_move m = votes[i].moves.back();
+            debug("%-15s %-10s    %3lu\n",
+                    finished_state_str(votes[i].result),
+                    move_str_buf(&m),
+                    votes[i].moves.size());
+        }
+    }
+
+    /*
+     * Find the move with the most votes.
+     */
+    if (find_modal_move(votes, vote_count, &m)) {
+        move_decided(gs, r, &m, votes, vote_count);
+    }
+    return loop_check(gs, r, s);
 }
 
 int ms_run(ms_game_state *gs, ms_rules *r, ms_settings *s) {
@@ -793,16 +815,12 @@ int ms_run(ms_game_state *gs, ms_rules *r, ms_settings *s) {
 
     threadpool thpool = thpool_init(s->max_concurrent_threads);
 
-    bool reveal = true;
+    solve_status x;
+    do {
+        x = run_loop(gs, r, s, &thpool, &votes[0], t_infos, states);
+    } while (x == KEEP_GOING);
 
-    while (!solved(gs, r, s)) {
-        if (!solvable(gs, r, s)) {
-            return 1;
-        }
-
-        run_loop(gs, r, s, &reveal, &thpool, &votes[0], t_infos, states);
-    }
-    debug("successful seed: %lu\n", seed);
+    debug("seed: %lu\tsuccess: %s\n", seed, bool_str(x == SOLVED));
     return 0;
 }
 

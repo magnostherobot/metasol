@@ -314,10 +314,35 @@ bool goes_through_stock(move *a) {
         && a->count != 0;
 }
 
-unsigned get_waste_index(ms_rules *r) {
-    assert(r->stock_deal_method == STOCK_TO_WASTE);
+unsigned get_first_tableau_pile_index(ms_rules *r) {
+    assert(r->tableau_size > 0);
 
-    unsigned i = 1;
+    unsigned i = 0;
+    if (r->hole_present) {
+        ++i;
+    }
+
+    if (r->foundations_present) {
+        i += 4 * r->deck_count;
+    }
+
+    i += r->cells;
+
+    if (r->stock_size > 0) {
+        i += 1;
+
+        if (r->stock_deal_method == STOCK_TO_WASTE) {
+            i += 1;
+        }
+    }
+
+    return i;
+}
+
+unsigned get_stock_index(ms_rules *r) {
+    assert(r->stock_size > 0);
+
+    unsigned i = 0;
     if (r->hole_present) {
         ++i;
     }
@@ -329,6 +354,11 @@ unsigned get_waste_index(ms_rules *r) {
     i += r->cells;
 
     return i;
+}
+
+unsigned get_waste_index(ms_rules *r) {
+    assert(r->stock_deal_method == STOCK_TO_WASTE);
+    return get_stock_index(r) + 1;
 }
 
 int convert_move(ms_game_state *gs, ms_rules *r, move *m, ms_move *sm) {
@@ -409,7 +439,11 @@ finished_state run_single(ms_game_state *gs, ms_rules *r,
                 d->run_cache_size, d->run_timeout));
 
     if (result == SOLUTION_FOUND) {
-        unsigned n = std::min(move_count, (unsigned) ml.size());
+        auto n = ml.size();
+        if (move_count) {
+            n = std::min((std::vector<move>::size_type) move_count, ml.size());
+        }
+
         moves->clear();
 
         unsigned stock = gs->stock.size();
@@ -456,6 +490,12 @@ finished_state run_single(ms_game_state *gs, ms_rules *r,
                     kpm.stock = false;
 
                     moves->push_back(kpm);
+                    break;
+                } case move::mtype::stock_to_all_tableau: {
+                    ms_move stm;
+                    stm.stock = true;
+
+                    moves->push_back(stm);
                     break;
                 } default: {
                     errx(EXIT_FAILURE, "unimplmented move type %s",
@@ -574,7 +614,7 @@ ms_settings get_settings(user_data *d) {
     s.thoughtful_run_func = &thoughtful_run;
     s.solved_func = &solved;
 
-    s.reserved_move_count = 30u;
+    s.reserved_move_count = 0u;
     s.max_concurrent_threads = 24u;
     s.max_votes = 10u;
 
