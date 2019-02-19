@@ -129,7 +129,10 @@ stock_deal_t str_stock_deal(char *str) {
         { "stock to waste", STOCK_TO_WASTE },
 
         { "tableau", STOCK_TO_TABLEAU },
-        { "stock to tableau", STOCK_TO_TABLEAU }
+        { "stock to tableau", STOCK_TO_TABLEAU },
+
+        { "hole", STOCK_TO_HOLE },
+        { "stock to hole", STOCK_TO_HOLE }
     };
 
     lower(str);
@@ -401,6 +404,12 @@ int shuffle_hidden(ms_game_state *gs) {
 }
 
 ms_card_pile *get_pile_by_index(ms_game_state *gs, ms_rules *r, uint8_t i) {
+    if (r->hole_present) {
+        if (i-- == 0) {
+            return &gs->hole;
+        }
+    }
+
     if (i < gs->foundations.size()) {
         return &gs->foundations[i];
     } else {
@@ -831,12 +840,13 @@ ms_rules fetch_default_rules() {
     dr.build_policy = BUILD_ANY;
     dr.spaces_policy = ANY_FILL_SPACE;
     dr.move_built_group = CANNOT_MOVE_BUILT_GROUP;
-    dr.built_group_policy = dr.build_policy;
+    dr.built_group_policy = NO_BUILD;
 
     dr.deck_count = 1u;
     dr.max_rank = 13u;
 
     dr.hole_present = false;
+    dr.hole_build_loops = true;
 
     dr.foundations_present = true;
     dr.foundations_init_cards = NO_FOUNDATION_INIT;
@@ -1077,6 +1087,13 @@ ms_game_state random_game_state(long user_seed, ms_rules *r) {
                 }
             }
         }
+    }
+
+    if (!deck.empty() && r->hole_present) {
+        ms_card c = deck.back();
+        c.hidden = false;
+        deck.pop_back();
+        gs.hole.push_back(c);
     }
 
     assert(deck.empty());

@@ -69,6 +69,7 @@ sol_rules::stock_deal_type convert_stock_deal(stock_deal_t sd) {
     switch (sd) {
         case STOCK_TO_WASTE:   return sol_rules::stock_deal_type::WASTE;
         case STOCK_TO_TABLEAU: return sol_rules::stock_deal_type::TABLEAU_PILES;
+        case STOCK_TO_HOLE:    return sol_rules::stock_deal_type::HOLE;
         default: assert(false);
     }
 }
@@ -127,6 +128,7 @@ sol_rules convert_rules(ms_rules *sr) {
     r.built_group_pol = convert_build_policy(sr->built_group_policy);
     r.max_rank = sr->max_rank;
     r.hole = sr->hole_present;
+    r.hole_build_loops = sr->hole_build_loops;
     r.foundations_present = sr->foundations_present;
     r.foundations_init_cards =
         convert_foundations_init(sr->foundations_init_cards);
@@ -808,8 +810,15 @@ ms_rules json_rules(const char *filename) {
                 arp("tableau size", NUMBER_TYPE, &r.tableau_size);
                 arp("deck count", NUMBER_TYPE, &r.deck_count);
                 arp("max rank", NUMBER_TYPE, &r.max_rank);
+
                 arp("hole", BOOL_TYPE, &r.hole_present);
+                arp("hole present", BOOL_TYPE, &r.hole_present);
+
+                arp("hole build loops", BOOL_TYPE, &r.hole_build_loops);
+
                 arp("foundations", BOOL_TYPE, &r.foundations_present);
+                arp("foundations present", BOOL_TYPE, &r.foundations_present);
+
                 arp("foundations removable", BOOL_TYPE,
                         &r.foundations_removable);
 
@@ -848,6 +857,7 @@ ms_rules json_rules(const char *filename) {
                 are("move built group", str_built_group, &r.move_built_group);
                 are("group build policy", str_build_policy,
                         &r.built_group_policy);
+
                 are("foundations initialised", str_foundations_init,
                         &r.foundations_init_cards);
 

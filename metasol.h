@@ -62,7 +62,8 @@ suite(accordion_policy);
 
 #define stock_deal_t_gen \
     C(STOCK_TO_WASTE)\
-    C(STOCK_TO_TABLEAU)
+    C(STOCK_TO_TABLEAU)\
+    C(STOCK_TO_HOLE)
 suite(stock_deal);
 
 #define face_up_policy_t_gen \
@@ -102,6 +103,7 @@ typedef struct ms_rules {
     unsigned deck_count;
     unsigned max_rank;
     bool hole_present;
+    bool hole_build_loops;
     bool foundations_present;
     foundations_init_t foundations_init_cards;
     bool specific_foundations_base;
