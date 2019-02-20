@@ -768,6 +768,25 @@ int assign_pile_group(jsmntok_t *key, const char *group_name,
     }
 }
 
+int assign_foundations_base(jsmntok_t *key, ms_rules *r, char *js) {
+    long length = key->end - key->start;
+    char *key_str = &js[key->start];
+    if (!strncmp(key_str, "foundations base", length)) {
+        jsmntok_t *val = next_tok(key);
+        char *val_str = &js[val->start];
+        if (!strncmp(val_str, "random", strlen("random"))) {
+            r->specific_foundations_base = false;
+        } else {
+            r->specific_foundations_base = true;
+            r->foundations_base = char_rank(val_str[0]);
+        }
+
+        return 2;
+    } else {
+        return 0;
+    }
+}
+
 ms_rules json_rules(const char *filename) {
     FILE *f = fopen(filename, "rb");
     long length = filelen(f);
@@ -869,6 +888,11 @@ ms_rules json_rules(const char *filename) {
                 are("sequence direction", str_direction, &r.sequence_direction);
                 are("sequence build policy", str_build_policy,
                         &r.sequence_build_policy);
+
+                x = assign_foundations_base(tok, &r, buf);
+                if (x) {
+                    break;
+                }
 
                 debug("%s\n", &buf[tok->start]);
                 assert(false);

@@ -94,6 +94,8 @@ extern card_suit SUITS[4];
 
 typedef uint8_t card_rank;
 
+card_rank char_rank(char);
+
 typedef struct ms_rules {
     unsigned tableau_size;
     build_policy_t build_policy;
