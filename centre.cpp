@@ -14,14 +14,14 @@
 static const char USAGE[] =
 R"(centre - a metasol instance.
 
-Usage: centre [options]
+Usage: centre <rules_file> [options]
 
 Options:
-  -h --help  Display this help.
-  -r FILE --rules FILE  Specify a .json file containing game rules.
-  -g FILE --game  FILE  Specify a .json file describing a game layout.
-  -s SEED --seed  SEED  Specify a seed to use when randomly generating a game
-                        (set to 0 to use an unspecified seed).)";
+  -g FILE --game FILE  Specify a .json file describing a game-state.
+  -h --help            Display this help.
+  -s SEED --seed SEED  Specify a seed to use when randomly generating a game
+                       (set to 0 to use an unspecified seed).
+  -v --version         Display version.)";
 
 static const char VERSION_STR[] = "Solver in-development";
 
@@ -522,87 +522,6 @@ finished_state thoughtful_run(ms_game_state *gs, ms_rules *r,
                 d->thoughtful_run_timeout));
 }
 
-ms_rules fortunes_favor() {
-    // default rules
-    ms_rules r = fetch_default_rules();
-
-    // rules specific to fortunes favor
-    r.tableau_size = 12u;
-    r.build_policy = BUILD_SAME_SUIT;
-    r.spaces_policy = AUTO_WASTE_THEN_STOCK;
-    r.foundations_init_cards = ALL_FOUNDATIONS_INIT;
-    r.stock_size = 36u;
-
-    return r;
-}
-
-ms_rules klondike() {
-    ms_rules r = fetch_default_rules();
-
-    r.tableau_size = 7u;
-    r.build_policy = BUILD_ALTERNATING;
-    r.spaces_policy = KINGS_FILL_SPACE;
-    r.move_built_group = CAN_MOVE_BUILT_GROUP;
-    r.built_group_policy = r.build_policy;
-
-    r.diagonal_deal = true;
-    r.face_up_policy = TOP_CARDS_FACE_UP;
-
-    r.foundations_removable = true;
-
-    r.stock_size = 24u;
-    r.stock_deal_count = 3u;
-    r.stock_redeal = true;
-
-    return r;
-}
-
-ms_rules canfield() {
-    ms_rules r = fetch_default_rules();
-
-    r.tableau_size = 4u;
-    r.build_policy = BUILD_ALTERNATING;
-    r.move_built_group = CAN_MOVE_WHOLE_PILE;
-    r.spaces_policy = AUTO_RESERVE_THEN_WASTE;
-    r.built_group_policy = r.build_policy;
-
-    r.foundations_init_cards = ONE_FOUNDATION_INIT;
-    r.specific_foundations_base = false;
-
-    r.stock_size = 34u;
-    r.stock_deal_count = 3u;
-    r.stock_redeal = true;
-
-    r.reserve_size = 13u;
-    r.reserve_stacked = true;
-
-    return r;
-}
-
-ms_rules simple_canfield() {
-    ms_rules r = fetch_default_rules();
-
-    r.tableau_size = 3u;
-    r.build_policy = BUILD_ALTERNATING;
-    r.move_built_group = CAN_MOVE_WHOLE_PILE;
-    r.spaces_policy = AUTO_RESERVE_THEN_WASTE;
-    r.built_group_policy = r.build_policy;
-
-    r.foundations_init_cards = ONE_FOUNDATION_INIT;
-    r.specific_foundations_base = false;
-
-    r.stock_size = 6u;
-    r.stock_deal_count = 3u;
-    r.stock_redeal = true;
-
-    r.reserve_size = 2;
-    r.reserve_stacked = true;
-
-    r.max_rank = 3u;
-
-    return r;
-}
-
 bool solved(ms_game_state *gs, ms_rules *r, void *d) {
     print_sgs(gs, r);
 
@@ -709,7 +628,6 @@ int assign_rule_enum(jsmntok_t *key, const char *name, char (*func)(char *),
     char *key_str = &js[key->start];
     if (!strncmp(key_str, name, length)) {
         jsmntok_t *val = next_tok(key);
-        assert(val->type == JSMN_STRING);
         char *buf = (char *) malloc(length + 1);
 
         char *val_str = &js[val->start];
@@ -771,7 +689,10 @@ int assign_pile_group(jsmntok_t *key, const char *group_name,
 int assign_foundations_base(jsmntok_t *key, ms_rules *r, char *js) {
     long length = key->end - key->start;
     char *key_str = &js[key->start];
-    if (!strncmp(key_str, "foundations base", length)) {
+    if (!strncmp(key_str, "foundations base", length)
+            || !strncmp(key_str, "foundations-base", length)
+            || !strncmp(key_str, "foundations_base", length)) {
+
         jsmntok_t *val = next_tok(key);
         char *val_str = &js[val->start];
         if (!strncmp(val_str, "random", strlen("random"))) {
@@ -820,42 +741,104 @@ ms_rules json_rules(const char *filename) {
             case JSMN_OBJECT: {
                 x = 1;
                 break;
-            } case JSMN_STRING: {
+            } case JSMN_STRING:
+            case JSMN_PRIMITIVE: {
+                if (buf[tok->start] == '#') {
+                    x = 1;
+                    break;
+                }
+
 #               define arp(n, t, p) { \
                     x = assign_rule_prim(tok, n, t, p, buf); \
                     if (x) break; \
                 }
 
                 arp("tableau size", NUMBER_TYPE, &r.tableau_size);
+                arp("tableau-size", NUMBER_TYPE, &r.tableau_size);
+                arp("tableau_size", NUMBER_TYPE, &r.tableau_size);
+
                 arp("deck count", NUMBER_TYPE, &r.deck_count);
+                arp("deck-count", NUMBER_TYPE, &r.deck_count);
+                arp("deck_count", NUMBER_TYPE, &r.deck_count);
+                arp("decks", NUMBER_TYPE, &r.deck_count);
+
                 arp("max rank", NUMBER_TYPE, &r.max_rank);
+                arp("max-rank", NUMBER_TYPE, &r.max_rank);
+                arp("max_rank", NUMBER_TYPE, &r.max_rank);
 
                 arp("hole", BOOL_TYPE, &r.hole_present);
                 arp("hole present", BOOL_TYPE, &r.hole_present);
+                arp("hole-present", BOOL_TYPE, &r.hole_present);
+                arp("hole_present", BOOL_TYPE, &r.hole_present);
 
                 arp("hole build loops", BOOL_TYPE, &r.hole_build_loops);
+                arp("hole-build-loops", BOOL_TYPE, &r.hole_build_loops);
+                arp("hole_build_loops", BOOL_TYPE, &r.hole_build_loops);
 
                 arp("foundations", BOOL_TYPE, &r.foundations_present);
                 arp("foundations present", BOOL_TYPE, &r.foundations_present);
+                arp("foundations-present", BOOL_TYPE, &r.foundations_present);
+                arp("foundations_present", BOOL_TYPE, &r.foundations_present);
 
                 arp("foundations removable", BOOL_TYPE,
+                        &r.foundations_removable);
+                arp("foundations-removable", BOOL_TYPE,
+                        &r.foundations_removable);
+                arp("foundations_removable", BOOL_TYPE,
                         &r.foundations_removable);
 
                 arp("foundations accept only complete piles", BOOL_TYPE,
                         &r.foundations_only_comp_piles);
+                arp("foundations-accept-only-complete-piles", BOOL_TYPE,
+                        &r.foundations_only_comp_piles);
+                arp("foundations_accept_only_complete_piles", BOOL_TYPE,
+                        &r.foundations_only_comp_piles);
                 arp("foundations only complete pile moves", BOOL_TYPE,
+                        &r.foundations_only_comp_piles);
+                arp("foundations-only-complete-pile-moves", BOOL_TYPE,
+                        &r.foundations_only_comp_piles);
+                arp("foundations_only_complete_pile_moves", BOOL_TYPE,
                         &r.foundations_only_comp_piles);
 
                 arp("diagonal deal", BOOL_TYPE, &r.diagonal_deal);
+                arp("diagonal-deal", BOOL_TYPE, &r.diagonal_deal);
+                arp("diagonal_deal", BOOL_TYPE, &r.diagonal_deal);
+
                 arp("number of cells", NUMBER_TYPE, &r.cells);
+                arp("number-of-cells", NUMBER_TYPE, &r.cells);
+                arp("number_of_cells", NUMBER_TYPE, &r.cells);
+
                 arp("cells pre-filled", BOOL_TYPE, &r.cells_pre_filled);
+                arp("cells-pre-filled", BOOL_TYPE, &r.cells_pre_filled);
+                arp("cells_pre-filled", BOOL_TYPE, &r.cells_pre_filled);
+
                 arp("cards in stock", NUMBER_TYPE, &r.stock_size);
+                arp("cards-in-stock", NUMBER_TYPE, &r.stock_size);
+                arp("cards_in_stock", NUMBER_TYPE, &r.stock_size);
+
                 arp("stock deal count", NUMBER_TYPE, &r.stock_deal_count);
+                arp("stock-deal-count", NUMBER_TYPE, &r.stock_deal_count);
+                arp("stock_deal_count", NUMBER_TYPE, &r.stock_deal_count);
+
                 arp("stock redeal allowed", BOOL_TYPE, &r.stock_redeal);
+                arp("stock-redeal-allowed", BOOL_TYPE, &r.stock_redeal);
+                arp("stock_redeal_allowed", BOOL_TYPE, &r.stock_redeal);
+
                 arp("cards in reserve", NUMBER_TYPE, &r.reserve_size);
+                arp("cards-in-reserve", NUMBER_TYPE, &r.reserve_size);
+                arp("cards_in_reserve", NUMBER_TYPE, &r.reserve_size);
+
                 arp("reserve stacked", BOOL_TYPE, &r.reserve_stacked);
+                arp("reserve-stacked", BOOL_TYPE, &r.reserve_stacked);
+                arp("reserve_stacked", BOOL_TYPE, &r.reserve_stacked);
+
                 arp("cards in sequence", NUMBER_TYPE, &r.sequence_count);
+                arp("cards-in-sequence", NUMBER_TYPE, &r.sequence_count);
+                arp("cards_in_sequence", NUMBER_TYPE, &r.sequence_count);
+
                 arp("sequence fixed suit", BOOL_TYPE, &r.sequence_fixed_suit);
+                arp("sequence-fixed-suit", BOOL_TYPE, &r.sequence_fixed_suit);
+                arp("sequence_fixed_suit", BOOL_TYPE, &r.sequence_fixed_suit);
 
                 /*
                  * FIXME
@@ -872,21 +855,56 @@ ms_rules json_rules(const char *filename) {
                 }
 
                 are("build policy", str_build_policy, &r.build_policy);
+                are("build-policy", str_build_policy, &r.build_policy);
+                are("build_policy", str_build_policy, &r.build_policy);
+
                 are("spaces policy", str_spaces_policy, &r.spaces_policy);
+                are("spaces-policy", str_spaces_policy, &r.spaces_policy);
+                are("spaces_policy", str_spaces_policy, &r.spaces_policy);
+
                 are("move built group", str_built_group, &r.move_built_group);
+                are("move-built-group", str_built_group, &r.move_built_group);
+                are("move_built_group", str_built_group, &r.move_built_group);
+
                 are("group build policy", str_build_policy,
+                        &r.built_group_policy);
+                are("group-build-policy", str_build_policy,
+                        &r.built_group_policy);
+                are("group_build_policy", str_build_policy,
                         &r.built_group_policy);
 
                 are("foundations initialised", str_foundations_init,
                         &r.foundations_init_cards);
+                are("foundations-initialised", str_foundations_init,
+                        &r.foundations_init_cards);
+                are("foundations_initialised", str_foundations_init,
+                        &r.foundations_init_cards);
 
                 are("stock deal type", str_stock_deal, &r.stock_deal_method);
+                are("stock-deal-type", str_stock_deal, &r.stock_deal_method);
+                are("stock_deal_type", str_stock_deal, &r.stock_deal_method);
+
                 are("stock deal method", str_stock_deal, &r.stock_deal_method);
+                are("stock-deal-method", str_stock_deal, &r.stock_deal_method);
+                are("stock_deal_method", str_stock_deal, &r.stock_deal_method);
 
                 are("face up cards", str_face_up_policy, &r.face_up_policy);
+                are("face-up-cards", str_face_up_policy, &r.face_up_policy);
+                are("face_up_cards", str_face_up_policy, &r.face_up_policy);
+
                 are("face up policy", str_face_up_policy, &r.face_up_policy);
+                are("face-up-policy", str_face_up_policy, &r.face_up_policy);
+                are("face_up_policy", str_face_up_policy, &r.face_up_policy);
+
                 are("sequence direction", str_direction, &r.sequence_direction);
+                are("sequence-direction", str_direction, &r.sequence_direction);
+                are("sequence_direction", str_direction, &r.sequence_direction);
+
                 are("sequence build policy", str_build_policy,
+                        &r.sequence_build_policy);
+                are("sequence-build-policy", str_build_policy,
+                        &r.sequence_build_policy);
+                are("sequence_build_policy", str_build_policy,
                         &r.sequence_build_policy);
 
                 x = assign_foundations_base(tok, &r, buf);
@@ -993,12 +1011,8 @@ ms_game_state make_game_state(ms_rules *r,
 }
 
 ms_rules make_rules(std::map<std::string, docopt::value> &args) {
-    if (args["--rules"]) {
-        const char *filename = args["--rules"].asString().c_str();
-        return json_rules(filename);
-    } else {
-        return canfield();
-    }
+    const char *filename = args["<rules_file>"].asString().c_str();
+    return json_rules(filename);
 }
 
 void parse_args(int argc, char **argv, ms_game_state *gs, ms_rules *r) {

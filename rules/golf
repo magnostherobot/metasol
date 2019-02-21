@@ -1,0 +1,9 @@
+#!centre
+
+tableau-size: 7
+build-policy: no-build
+foundations-present: false
+cards-in-stock: 16
+stock-deal-type: stock-to-hole
+hole: true
+hole-build-loops: true

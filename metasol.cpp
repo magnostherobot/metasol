@@ -29,6 +29,7 @@ struct dictcmp {
 build_policy_t str_build_policy(char *str) {
     kv_dict(build_policy_t) dict = {
         { "no build", NO_BUILD },
+        { "no-build", NO_BUILD },
         { "none", NO_BUILD },
 
         { "same suit", BUILD_SAME_SUIT },
@@ -63,18 +64,30 @@ spaces_policy_t str_spaces_policy(char *str) {
     kv_dict(spaces_policy_t) dict = {
         { "none", NO_SPACE_FILL },
         { "no fill", NO_SPACE_FILL },
+        { "no-fill", NO_SPACE_FILL },
+        { "no_fill", NO_SPACE_FILL },
 
         { "kings only", KINGS_FILL_SPACE },
+        { "kings-only", KINGS_FILL_SPACE },
+        { "kings_only", KINGS_FILL_SPACE },
         { "kings", KINGS_FILL_SPACE },
 
         { "any", ANY_FILL_SPACE },
         { "all", ANY_FILL_SPACE },
 
         { "reserve first", AUTO_RESERVE_THEN_WASTE },
+        { "reserve-first", AUTO_RESERVE_THEN_WASTE },
+        { "reserve_first", AUTO_RESERVE_THEN_WASTE },
         { "reserve then waste", AUTO_RESERVE_THEN_WASTE },
+        { "reserve-then-waste", AUTO_RESERVE_THEN_WASTE },
+        { "reserve_then_waste", AUTO_RESERVE_THEN_WASTE },
 
         { "waste first", AUTO_WASTE_THEN_STOCK },
-        { "waste then stock", AUTO_WASTE_THEN_STOCK }
+        { "waste-first", AUTO_WASTE_THEN_STOCK },
+        { "waste_first", AUTO_WASTE_THEN_STOCK },
+        { "waste then stock", AUTO_WASTE_THEN_STOCK },
+        { "waste-then-stock", AUTO_WASTE_THEN_STOCK },
+        { "waste_then_stock", AUTO_WASTE_THEN_STOCK }
     };
 
     lower(str);
@@ -96,12 +109,18 @@ const char *spaces_policy_str(spaces_policy_t bp) {
 accordion_policy_t str_accordion_policy(char *str) {
     kv_dict(accordion_policy_t) dict = {
         { "same rank", ACCORDION_SAME_RANK },
+        { "same-rank", ACCORDION_SAME_RANK },
+        { "same_rank", ACCORDION_SAME_RANK },
         { "rank", ACCORDION_SAME_RANK },
 
         { "same suit", ACCORDION_SAME_SUIT },
+        { "same-suit", ACCORDION_SAME_SUIT },
+        { "same_suit", ACCORDION_SAME_SUIT },
         { "suit", ACCORDION_SAME_SUIT },
 
         { "alternating colour", ACCORDION_ALTERNATE_COLOUR },
+        { "alternating-colour", ACCORDION_ALTERNATE_COLOUR },
+        { "alternating_colour", ACCORDION_ALTERNATE_COLOUR },
         { "red-black", ACCORDION_ALTERNATE_COLOUR },
 
         { "any", ACCORDION_ANY_SUIT }
@@ -127,12 +146,18 @@ stock_deal_t str_stock_deal(char *str) {
     kv_dict(stock_deal_t) dict = {
         { "waste", STOCK_TO_WASTE },
         { "stock to waste", STOCK_TO_WASTE },
+        { "stock-to-waste", STOCK_TO_WASTE },
+        { "stock_to_waste", STOCK_TO_WASTE },
 
         { "tableau", STOCK_TO_TABLEAU },
         { "stock to tableau", STOCK_TO_TABLEAU },
+        { "stock-to-tableau", STOCK_TO_TABLEAU },
+        { "stock_to_tableau", STOCK_TO_TABLEAU },
 
         { "hole", STOCK_TO_HOLE },
-        { "stock to hole", STOCK_TO_HOLE }
+        { "stock to hole", STOCK_TO_HOLE },
+        { "stock-to-hole", STOCK_TO_HOLE },
+        { "stock_to_hole", STOCK_TO_HOLE }
     };
 
     lower(str);
