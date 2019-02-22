@@ -7,7 +7,7 @@
 
 #include "thpool/thpool.h"
 
-#include "metasol.h"
+#include "metasol.hpp"
 #include "debug.h"
 
 card_suit SUITS[4] = { HEARTS, SPADES, CLUBS, DIAMONDS };
@@ -55,8 +55,13 @@ build_policy_t str_build_policy(char *str) {
 }
 
 const char *build_policy_str(build_policy_t bp) {
-    const char *const build_policy_arr[] = { build_policy_t_gen };
-    assert(bp < build_policy_t_count);
+    const char *const build_policy_arr[] = {
+        "NO_BUILD",
+        "BUILD_SAME_SUIT",
+        "BUILD_ALTERNATING",
+        "BUILD_ANY"
+    };
+
     return build_policy_arr[bp];
 }
 
@@ -101,8 +106,14 @@ spaces_policy_t str_spaces_policy(char *str) {
 }
 
 const char *spaces_policy_str(spaces_policy_t bp) {
-    const char *const spaces_policy_arr[] = { spaces_policy_t_gen };
-    assert(bp < spaces_policy_t_count);
+    const char *const spaces_policy_arr[] = {
+        "NO_SPACE_FILL",
+        "KINGS_FILL_SPACE",
+        "ANY_FILL_SPACE",
+        "AUTO_RESERVE_THEN_WASTE",
+        "AUTO_WASTE_THEN_STOCK"
+    };
+
     return spaces_policy_arr[bp];
 }
 
@@ -137,8 +148,13 @@ accordion_policy_t str_accordion_policy(char *str) {
 }
 
 const char *accordion_policy_str(accordion_policy_t bp) {
-    const char *const accordion_policy_arr[] = { accordion_policy_t_gen };
-    assert(bp < accordion_policy_t_count);
+    const char *const accordion_policy_arr[] = {
+        "ACCORDION_SAME_RANK",
+        "ACCORDION_SAME_SUIT",
+        "ACCORDION_ALTERNATE_COLOUR",
+        "ACCORDION_ANY_SUIT"
+    };
+
     return accordion_policy_arr[bp];
 }
 
@@ -171,8 +187,12 @@ stock_deal_t str_stock_deal(char *str) {
 }
 
 const char *stock_deal_str(stock_deal_t bp) {
-    const char *const stock_deal_arr[] = { stock_deal_t_gen };
-    assert(bp < stock_deal_t_count);
+    const char *const stock_deal_arr[] = {
+        "STOCK_TO_WASTE",
+        "STOCK_TO_TABLEAU",
+        "STOCK_TO_HOLE"
+    };
+
     return stock_deal_arr[bp];
 }
 
@@ -195,8 +215,11 @@ face_up_policy_t str_face_up_policy(char *str) {
 }
 
 const char *face_up_policy_str(face_up_policy_t bp) {
-    const char *const face_up_policy_arr[] = { face_up_policy_t_gen };
-    assert(bp < face_up_policy_t_count);
+    const char *const face_up_policy_arr[] = {
+        "ALL_CARDS_FACE_UP",
+        "TOP_CARDS_FACE_UP"
+    };
+
     return face_up_policy_arr[bp];
 }
 
@@ -221,8 +244,12 @@ direction_t str_direction(char *str) {
 }
 
 const char *direction_str(direction_t bp) {
-    const char *const direction_arr[] = { direction_t_gen };
-    assert(bp < direction_t_count);
+    const char *const direction_arr[] = {
+        "LEFT",
+        "RIGHT",
+        "BOTH"
+    };
+
     return direction_arr[bp];
 }
 
@@ -251,8 +278,13 @@ built_group_t str_built_group(char *str) {
 }
 
 const char *built_group_str(built_group_t bp) {
-    const char *const built_group_arr[] = { built_group_t_gen };
-    assert(bp < built_group_t_count);
+    const char *const built_group_arr[] = {
+        "CAN_MOVE_BUILT_GROUP",
+        "CANNOT_MOVE_BUILT_GROUP",
+        "CAN_MOVE_WHOLE_PILE",
+        "CAN_MOVE_MAXIMAL_GROUP"
+    };
+
     return built_group_arr[bp];
 }
 
@@ -278,8 +310,12 @@ foundations_init_t str_foundations_init(char *str) {
 }
 
 const char *foundations_init_str(foundations_init_t bp) {
-    const char *const foundations_init_arr[] = { foundations_init_t_gen };
-    assert(bp < foundations_init_t_count);
+    const char *const foundations_init_arr[] = {
+        "NO_FOUNDATION_INIT",
+        "ONE_FOUNDATION_INIT",
+        "ALL_FOUNDATIONS_INIT"
+    };
+
     return foundations_init_arr[bp];
 }
 
@@ -468,6 +504,14 @@ ms_card_pile *get_pile_by_index(ms_game_state *gs, ms_rules *r, uint8_t i) {
     assert(false);
 }
 
+typedef struct {
+    ms_game_state *gs;
+    ms_rules *r;
+    ms_settings *s;
+    std::vector<ms_move> *move_buf;
+    finished_state *result;
+} thread_info;
+
 void *run_thread(void *vargp) {
     thread_info *ti = (thread_info *) vargp;
     *ti->result = ti->s->run_func(ti->gs, ti->r, ti->move_buf,
@@ -572,8 +616,6 @@ char const *finished_state_str(finished_state f) {
     switch (f) {
         case SOLUTION_FOUND: return "SOLUTION_FOUND";
         case NO_SOLUTION:    return "NO_SOLUTION";
-        case TIMEOUT:        return "TIMEOUT";
-        case SOLVER_OOM:     return "SOLVER_OOM";
         case CANCELLED:      return "CANCELLED";
         default: assert(false);
     }

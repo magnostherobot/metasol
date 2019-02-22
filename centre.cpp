@@ -8,7 +8,7 @@
 #include "docopt/docopt.h"
 #include "jsmn/jsmn.h"
 
-#include "metasol.h"
+#include "metasol.hpp"
 #include "debug.h"
 
 static const char USAGE[] =

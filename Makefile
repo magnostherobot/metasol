@@ -11,7 +11,7 @@ SRC = metasol.cpp centre.cpp
 OBJ = $(SRC:.cpp=.o)
 DEP = $(SRC:.cpp=.d)
 
-.PHONY: default all run init-submodules
+.PHONY: default all init-submodules docs
 
 default: all
 all: $(TRGT)
@@ -22,13 +22,13 @@ init-submodules:
 	git submodule update
 	$(MAKE) -C thpool
 	$(MAKE) -C jsmn
-	(cd docopt; cmake .) $(MAKE) -C docopt docopt_s
+	(cd docopt; cmake .) ; $(MAKE) -C docopt docopt_s
 	(cd solvitaire; sh build.sh)
 
-run: $(TRGT)
-	./$<
+docs:
+	doxygen ./Doxyfile
 
 -include $(DEP)
 
 clean:
-	$(RM) $(TRGT) $(OBJ) $(DEP)
+	$(RM) $(TRGT) $(OBJ) $(DEP) -r docs
