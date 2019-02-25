@@ -819,20 +819,6 @@ solve_status run_loop(ms_game_state *gs, ms_rules *r, ms_settings *s,
     ms_move m;
 
     /*
-     * If a majority of voters already agree on a move, running other voters is
-     * a waste of time.
-     */
-    bool mm = false;
-    while (find_majority_move(votes, vote_count, &m)) {
-        mm = true;
-        debug("majority move found\n");
-        move_decided(gs, r, &m, votes, vote_count);
-    }
-    if (mm) {
-        return loop_check(gs, r, s);
-    }
-
-    /*
      * Set up the thread_info structs and add a job to the threadpool for each
      * one.
      */
@@ -866,6 +852,16 @@ solve_status run_loop(ms_game_state *gs, ms_rules *r, ms_settings *s,
     if (find_modal_move(votes, vote_count, &m)) {
         move_decided(gs, r, &m, votes, vote_count);
     }
+
+    /*
+     * If a majority of voters already agree on a move, running other voters is
+     * a waste of time.
+     */
+    while (find_majority_move(votes, vote_count, &m)) {
+        debug("majority move found\n");
+        move_decided(gs, r, &m, votes, vote_count);
+    }
+
     return loop_check(gs, r, s);
 }
 
