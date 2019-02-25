@@ -22,9 +22,35 @@ struct dictcmp {
     }
 };
 
-#define kv_dict(t) std::map<const char *, t, dictcmp>
+unsigned face_down_count_pile(ms_card_pile *p) {
+    unsigned result = 0u;
+    for (auto &c : *p) {
+        result += c.hidden ? 1u : 0u;
+    }
+    return result;
+}
 
-#define C(x) #x,
+unsigned face_down_count_piles(std::vector<ms_card_pile> *ps) {
+    unsigned result = 0u;
+    for (auto &p : *ps) {
+        result += face_down_count_pile(&p);
+    }
+    return result;
+}
+
+unsigned face_down_count(ms_game_state *gs) {
+    unsigned result = 0u;
+    result += face_down_count_piles(&gs->foundations);
+    result += face_down_count_pile(&gs->stock);
+    result += face_down_count_pile(&gs->waste);
+    result += face_down_count_piles(&gs->tableau);
+    result += face_down_count_pile(&gs->hole);
+    result += face_down_count_piles(&gs->cells);
+    result += face_down_count_pile(&gs->reserve);
+    return result;
+}
+
+#define kv_dict(t) std::map<const char *, t, dictcmp>
 
 build_policy_t str_build_policy(char *str) {
     kv_dict(build_policy_t) dict = {
@@ -817,6 +843,16 @@ solve_status run_loop(ms_game_state *gs, ms_rules *r, ms_settings *s,
 
     unsigned vote_count = s->max_votes;
     ms_move m;
+
+    /*
+     * If there are no face-down cards, then any voter run should tell us if the
+     * deal is solvable. This function is only entered if a voter found a
+     * solution, so it can be inferred that a solution is found.
+     */
+    if (face_down_count(gs) == 0) {
+        debug("solution found!\n");
+        return SOLVED;
+    }
 
     /*
      * Set up the thread_info structs and add a job to the threadpool for each
