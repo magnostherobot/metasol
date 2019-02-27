@@ -1,6 +1,3 @@
-[submodule "thpool"]
-	path = thpool
-	url = git@github.com:magnostherobot/C-Thread-Pool-static-lib
 [submodule "jsmn"]
 	path = jsmn
 	url = git@github.com:magnostherobot/jsmn
@@ -10,3 +7,6 @@
 [submodule "solvitaire-static-lib"]
 	path = solvitaire
 	url = git@github.com:magnostherobot/solvitaire-static-lib
+[submodule "ctpl"]
+	path = ctpl
+	url = git@github.com:sheljohn/CTPL
