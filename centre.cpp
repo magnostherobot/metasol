@@ -15,13 +15,17 @@ static const char USAGE[] =
 R"(centre - a metasol instance.
 
 Usage: centre <rules_file> [options]
+       centre --help|-h
 
 Options:
-  -g FILE --game FILE  Specify a .json file describing a game-state.
-  -h --help            Display this help.
-  -s SEED --seed SEED  Specify a seed to use when randomly generating a game
-                       (set to 0 to use an unspecified seed).
-  -v --version         Display version.)";
+  -h --help                Display this help.
+  -g FILE --game FILE      Specify a file describing a game-state.
+  --dealseed SEED          Specify a seed to use when randomly generating a game
+                           (set to 0 to use an unspecified seed).
+  --solveseed SEED         Specify a seed for the solver to use
+                           (set to 0 to use an unspecified seed).
+  -s FILE --settings FILE  Specify a settings file.
+  -v --version             Display version.)";
 
 static const char VERSION_STR[] = "Solver in-development";
 
@@ -531,12 +535,15 @@ bool solved(ms_game_state *gs, ms_rules *r, void *d) {
 ms_settings get_settings(user_data *d) {
     ms_settings s = fetch_default_settings();
 
+    s.seed = (unsigned long) time(0);
+
     s.run_func = &run_single;
     s.thoughtful_run_func = &thoughtful_run;
     s.solved_func = &solved;
 
     s.reserved_move_count = 0u;
     s.max_concurrent_threads = 24u;
+    s.max_concurrent_games = 5u;
     s.max_votes = 10u;
 
     s.user_data = (void *) d;
@@ -706,6 +713,76 @@ int assign_foundations_base(jsmntok_t *key, ms_rules *r, char *js) {
     } else {
         return 0;
     }
+}
+
+void json_settings(ms_settings *s, const char *filename) {
+    FILE *f = fopen(filename, "rb");
+    long length = filelen(f);
+    char *buf = (char *) malloc(length);
+
+    assert(buf);
+
+    file_str(f, buf, length);
+
+    jsmn_parser parser;
+    jsmn_init(&parser);
+    int tok_count = jsmn_parse(&parser, buf, length, NULL, 0);
+    jsmntok_t *tokens = (jsmntok_t *) malloc(tok_count * sizeof(jsmntok_t));
+
+    assert(tokens);
+
+    jsmn_init(&parser);
+    auto parse_val = jsmn_parse(&parser, buf, length, tokens, tok_count);
+
+    assert(parse_val != JSMN_ERROR_INVAL);
+    assert(parse_val != JSMN_ERROR_NOMEM);
+    assert(parse_val != JSMN_ERROR_PART);
+
+    for (int i = 0; i < tok_count;) {
+        jsmntok_t *tok = &tokens[i];
+
+        int x = 0;
+        switch (tok->type) {
+            case JSMN_OBJECT: {
+                x = 1;
+                break;
+            } case JSMN_STRING:
+            case JSMN_PRIMITIVE: {
+                if (buf[tok->start] == '#') {
+                    x = 1;
+                    break;
+                }
+
+#               define arp(n, t, p) { \
+                    x = assign_rule_prim(tok, n, t, p, buf); \
+                    if (x) break; \
+                }
+
+                arp("max concurrent threads", NUMBER_TYPE,
+                        &s->max_concurrent_threads);
+                arp("max_concurrent_threads", NUMBER_TYPE,
+                        &s->max_concurrent_threads);
+                arp("max-concurrent-threads", NUMBER_TYPE,
+                        &s->max_concurrent_threads);
+
+                arp("max concurrent games", NUMBER_TYPE,
+                        &s->max_concurrent_games);
+                arp("max_concurrent_games", NUMBER_TYPE,
+                        &s->max_concurrent_games);
+                arp("max-concurrent-games", NUMBER_TYPE,
+                        &s->max_concurrent_games);
+
+                arp("seed", NUMBER_TYPE, &s->seed);
+
+            } default: {
+                assert(false);
+            }
+        }
+        i += x;
+    }
+
+    free(buf);
+    free(tokens);
 }
 
 ms_rules json_rules(const char *filename) {
@@ -1000,8 +1077,8 @@ ms_game_state make_game_state(ms_rules *r,
         return json_game_state(filename);
     } else {
         long seed;
-        if (args["--seed"]) {
-            seed = args["--seed"].asLong();
+        if (args["--dealseed"]) {
+            seed = args["--dealseed"].asLong();
         } else {
             seed = 0;
         }
@@ -1015,13 +1092,33 @@ ms_rules make_rules(std::map<std::string, docopt::value> &args) {
     return json_rules(filename);
 }
 
-void parse_args(int argc, char **argv, ms_game_state *gs, ms_rules *r) {
-    std::map<std::string, docopt::value> args = docopt::docopt(USAGE,
-            { argv + 1, argv + argc }, true, VERSION_STR);
+ms_settings make_settings(std::map<std::string, docopt::value> &args,
+        user_data *d) {
+    ms_settings s = get_settings(d);
 
+    if (args["--settings"]) {
+        const char *filename = args["--settings"].asString().c_str();
+        json_settings(&s, filename);
+    }
+
+    if (args["--solveseed"]) {
+        s.seed = (unsigned long)
+            strtoll(args["--solveseed"].asString().c_str(), NULL, 0);
+    }
+
+    s.rng = std::default_random_engine{s.seed};
+    return s;
+}
+
+void parse_args(int argc, char **argv, ms_game_state *gs, ms_rules *r,
+        ms_settings *s, user_data *d) {
+
+    auto args = docopt::docopt(USAGE, { argv + 1, argv + argc }, true,
+            VERSION_STR);
+
+    *s = make_settings(args, d);
     *r = make_rules(args);
     *gs = make_game_state(r, args);
-    /* make_settings(s, args); */
 }
 
 int main(int argc, char **argv) {
@@ -1029,10 +1126,10 @@ int main(int argc, char **argv) {
     ms_settings s;
     ms_game_state gs;
 
-    parse_args(argc, argv, &gs, &r);
-
     user_data d = get_user_data();
-    s = get_settings(&d);
 
-    return ms_run(&gs, &r, &s);
+    parse_args(argc, argv, &gs, &r, &s, &d);
+
+    ctpl::thread_pool tp(s.max_concurrent_threads);
+    return ms_run(&gs, &r, &s, &tp);
 }

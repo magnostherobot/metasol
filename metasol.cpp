@@ -1,11 +1,12 @@
 #include <algorithm>
+#include <future>
 #include <map>
 #include <random>
 
 #include <assert.h>
 #include <err.h>
 
-#include "thpool/thpool.h"
+#include "ctpl/ctpl_stl.h"
 
 #include "metasol.hpp"
 #include "debug.h"
@@ -17,12 +18,12 @@ void lower(char *str) {
 }
 
 struct dictcmp {
-    bool operator()(const char *a, const char *b) {
+    bool operator()(const char *a, const char *b) const {
         return strcmp(a, b) < 0;
     }
 };
 
-unsigned face_down_count_pile(ms_card_pile *p) {
+static inline unsigned face_down_count_pile(ms_card_pile *p) {
     unsigned result = 0u;
     for (auto &c : *p) {
         result += c.hidden ? 1u : 0u;
@@ -30,7 +31,7 @@ unsigned face_down_count_pile(ms_card_pile *p) {
     return result;
 }
 
-unsigned face_down_count_piles(std::vector<ms_card_pile> *ps) {
+static inline unsigned face_down_count_piles(std::vector<ms_card_pile> *ps) {
     unsigned result = 0u;
     for (auto &p : *ps) {
         result += face_down_count_pile(&p);
@@ -72,7 +73,7 @@ build_policy_t str_build_policy(char *str) {
 
     lower(str);
     auto result = dict.find(str);
-    
+
     if (result == dict.end()) {
         errx(EXIT_FAILURE, "unknown key '%s'", str);
     }
@@ -123,7 +124,7 @@ spaces_policy_t str_spaces_policy(char *str) {
 
     lower(str);
     auto result = dict.find(str);
-    
+
     if (result == dict.end()) {
         errx(EXIT_FAILURE, "unknown key '%s'", str);
     }
@@ -165,7 +166,7 @@ accordion_policy_t str_accordion_policy(char *str) {
 
     lower(str);
     auto result = dict.find(str);
-    
+
     if (result == dict.end()) {
         errx(EXIT_FAILURE, "unknown key '%s'", str);
     }
@@ -468,10 +469,7 @@ unsigned total_pile_count(ms_rules *r) {
     // research required!
 }
 
-std::random_device rd;
-auto seed = static_cast<long unsigned int>(time(0));
-auto rng = std::default_random_engine{seed};
-int shuffle_hidden(ms_game_state *gs) {
+int shuffle_hidden(ms_game_state *gs, ms_settings *s) {
     std::vector<ms_card *> hidden_card_pointers;
     get_hidden_cards(gs, hidden_card_pointers);
 
@@ -479,9 +477,9 @@ int shuffle_hidden(ms_game_state *gs) {
     for (ms_card *p : hidden_card_pointers)
         hidden_cards.push_back(*p);
 
-    std::shuffle(hidden_cards.begin(), hidden_cards.end(), rng);
+    std::shuffle(hidden_cards.begin(), hidden_cards.end(), s->rng);
 
-    for (typeof(hidden_cards.size()) i = 0; i < hidden_cards.size(); ++i) {
+    for (__typeof__(hidden_cards.size()) i = 0; i < hidden_cards.size(); ++i) {
         ms_card *cp = hidden_card_pointers[i];
         ms_card c = hidden_cards[i];
         *cp = c;
@@ -538,11 +536,10 @@ typedef struct {
     finished_state *result;
 } thread_info;
 
-void *run_thread(void *vargp) {
+void run_thread(int id, void *vargp) {
     thread_info *ti = (thread_info *) vargp;
     *ti->result = ti->s->run_func(ti->gs, ti->r, ti->move_buf,
             ti->s->reserved_move_count, ti->s->user_data);
-    return NULL;
 }
 
 bool ms_move_lt(const ms_move &a, const ms_move &b) {
@@ -555,7 +552,7 @@ bool ms_move_lt(const ms_move &a, const ms_move &b) {
 }
 
 struct votecmp {
-    bool operator()(const ms_move &a, const ms_move &b) {
+    bool operator()(const ms_move &a, const ms_move &b) const {
         return ms_move_lt(a, b);
     }
 };
@@ -740,9 +737,11 @@ bool find_majority_move(vote *v, unsigned vote_count, ms_move *m) {
     return false;
 }
 
+typedef std::vector<std::future<void>> jobs;
+
 void run_new_voters(ms_game_state *gs, ms_rules *r, ms_settings *s,
-        threadpool *thpool, ms_game_state *ss, vote *v, thread_info *ti,
-        unsigned n) {
+        ctpl::thread_pool *thpool, ms_game_state *ss, vote *v, thread_info *ti,
+        jobs *fs, unsigned n) {
 
     for (unsigned i = 0; i < n; ++i) {
 
@@ -751,7 +750,7 @@ void run_new_voters(ms_game_state *gs, ms_rules *r, ms_settings *s,
          */
         if (v[i].result != SOLUTION_FOUND || v[i].moves.empty()) {
             ss[i] = *gs;
-            shuffle_hidden(&ss[i]);
+            shuffle_hidden(&ss[i], s);
 
             ti[i].gs = &ss[i];
             ti[i].r = r;
@@ -759,8 +758,7 @@ void run_new_voters(ms_game_state *gs, ms_rules *r, ms_settings *s,
             ti[i].move_buf = &v[i].moves;
             ti[i].result = &v[i].result;
 
-            thpool_add_work(*thpool, (void (*)(void *)) &run_thread,
-                    (void *) &ti[i]);
+            fs->push_back(thpool->push(run_thread, &ti[i]));
         }
     }
 }
@@ -838,7 +836,7 @@ solve_status loop_check(ms_game_state *gs, ms_rules *r, ms_settings *s) {
 }
 
 solve_status run_loop(ms_game_state *gs, ms_rules *r, ms_settings *s,
-        threadpool *thpool, vote *votes, thread_info *t_infos,
+        ctpl::thread_pool *thpool, vote *votes, thread_info *t_infos,
         ms_game_state *shuffled_states) {
 
     unsigned vote_count = s->max_votes;
@@ -858,25 +856,28 @@ solve_status run_loop(ms_game_state *gs, ms_rules *r, ms_settings *s,
      * Set up the thread_info structs and add a job to the threadpool for each
      * one.
      */
-    run_new_voters(gs, r, s, thpool, shuffled_states, votes, t_infos,
+    jobs fs;
+    run_new_voters(gs, r, s, thpool, shuffled_states, votes, t_infos, &fs,
             vote_count);
 
     /*
      * Wait on all of the voters to complete.
      */
-    thpool_wait(*thpool);
+    for (auto &f : fs) {
+        assert(f.valid());
+        f.wait();
+    }
 
     /*
      * Print information about each voter.
      */
-    debug("state\t\t\tmove\tmoves left\n");
+    debug( "%-15s %-10s %3s\n", "state", "move", "moves left");
     for (unsigned i = 0; i < s->max_votes; ++i) {
         if (votes[i].moves.empty()) {
             debug("%-15s\n", finished_state_str(votes[i].result));
         } else {
             ms_move m = votes[i].moves.back();
-            debug("%-15s %-10s    %3lu\n",
-                    finished_state_str(votes[i].result),
+            debug("%-15s %-10s %3lu\n", finished_state_str(votes[i].result),
                     move_str_buf(&m),
                     votes[i].moves.size());
         }
@@ -901,7 +902,8 @@ solve_status run_loop(ms_game_state *gs, ms_rules *r, ms_settings *s,
     return loop_check(gs, r, s);
 }
 
-int ms_run(ms_game_state *gs, ms_rules *r, ms_settings *s) {
+int ms_run(ms_game_state *gs, ms_rules *r, ms_settings *s,
+        ctpl::thread_pool *tp) {
 
     /*
      * Here is where the memory required for storing all of the information
@@ -921,14 +923,44 @@ int ms_run(ms_game_state *gs, ms_rules *r, ms_settings *s) {
     thread_info *t_infos = gimme_mem(thread_info);
     ms_game_state *states = gimme_mem(ms_game_state);
 
-    threadpool thpool = thpool_init(s->max_concurrent_threads);
-
     solve_status x;
     do {
-        x = run_loop(gs, r, s, &thpool, &votes[0], t_infos, states);
+        x = run_loop(gs, r, s, tp, &votes[0], t_infos, states);
     } while (x == KEEP_GOING);
 
-    debug("seed: %lu\tsuccess: %s\n", seed, bool_str(x == SOLVED));
+    printf("solveseed: %lu\tdealseed: %lu\tsuccess: %s\n", s->seed, gs->seed,
+            bool_str(x == SOLVED));
+
+    return 0;
+}
+
+int run_single(ms_rules *r, ms_settings *s, unsigned long seed,
+        ctpl::thread_pool *tp) {
+    ms_game_state gs = random_game_state(seed, r);
+    return ms_run(&gs, r, s, tp);
+}
+
+int ms_run_single(ms_rules *r, ms_settings *s, unsigned long seed) {
+    ctpl::thread_pool tp(s->max_concurrent_threads);
+    return run_single(r, s, seed, &tp);
+}
+
+int ms_run_infinite(int tid, ms_rules *r, ms_settings *s, ctpl::thread_pool *tp,
+        unsigned n, unsigned i) {
+    for (unsigned long id = i; true; i += n) {
+        run_single(r, s, id, tp);
+    }
+    return 0;
+}
+
+int ms_run_many(ms_rules *r, ms_settings *s) {
+    unsigned n = s->max_concurrent_games;
+    ctpl::thread_pool game_tp(n);
+
+    ctpl::thread_pool main_tp(s->max_concurrent_threads);
+    for (unsigned i = 0; i < n; ++i) {
+        game_tp.push(ms_run_infinite, r, s, &main_tp, n, i);
+    }
     return 0;
 }
 
@@ -1196,5 +1228,7 @@ ms_game_state random_game_state(long user_seed, ms_rules *r) {
     }
 
     assert(deck.empty());
+
+    gs.seed = seed;
     return gs;
 }

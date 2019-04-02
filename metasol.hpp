@@ -15,9 +15,12 @@
 #define METASOL_H
 
 #include <vector>
+#include <random>
 
 #include <stdint.h>
 #include <string.h>
+
+#include "ctpl/ctpl_stl.h"
 
 /**
  * Rule describing what cards other cards can be moved on top of.
@@ -580,6 +583,11 @@ typedef struct {
     ms_card_pile hole;
     std::vector<ms_card_pile> cells;
     ms_card_pile reserve;
+
+    /**
+     * The seed used for random generation of the game-state.
+     */
+    long seed;
 } ms_game_state;
 
 /**
@@ -740,9 +748,24 @@ typedef struct {
     unsigned max_concurrent_threads;
 
     /**
+     * How many games to run in parallel.
+     */
+    unsigned max_concurrent_games;
+
+    /**
      * How many votes are used to determine the next move.
      */
     unsigned max_votes;
+
+    /**
+     * The seed used when shuffling face-down cards around.
+     */
+    unsigned long seed;
+
+    /**
+     * The random generator used when shuffling face-down cards around.
+     */
+    std::default_random_engine rng;
 
 } ms_settings;
 
@@ -805,7 +828,27 @@ ms_game_state random_game_state(long seed, ms_rules *rules);
  * @param game_state The game-state to solve from.
  * @param rules The rules describing the game.
  * @param settings The settings to use when running.
+ * @param thpool The thread pool to use.
  */
-int ms_run(ms_game_state *game_state, ms_rules *rules, ms_settings *settings);
+int ms_run(ms_game_state *game_state, ms_rules *rules, ms_settings *settings,
+        ctpl::thread_pool *thpool);
+
+/**
+ * Constructs and attempts to solve a single game-state.
+ *
+ * @param rules The rules of the game-state to create.
+ * @param settings The settings to run the solver with.
+ * @param seed The seed for generating the game-state.
+ */
+int ms_run_single(ms_rules *rules, ms_settings *settings, unsigned long seed);
+
+/**
+ * Constructs and plays games until terminated.
+ *
+ * @param rules The rules of the game-state to create.
+ * @param settings The settings to run the solvers with.
+ * @returns 0.
+ */
+int ms_run_many(ms_rules *rules, ms_settings *settings);
 
 #endif /* METASOL_H */

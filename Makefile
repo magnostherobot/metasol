@@ -1,10 +1,10 @@
 CXX = g++
-CXXFLAGS = -ggdb3 -O0 -Wpedantic -Wall -Werror
+CXXFLAGS = -ggdb3 -O0 -Wpedantic -Wall -Werror -std=c++17
 OUTPUT_OPTION = -MMD -MP -o $@
 
 LINK.o = $(LINK.cc)
-LDFLAGS = -Lthpool -Ldocopt -Ljsmn -Lsolvitaire
-LDLIBS = -lpthread -lsol -lthpool -ldocopt -ljsmn
+LDFLAGS = -Ldocopt -Ljsmn -Lsolvitaire
+LDLIBS = -lpthread -lsol -ldocopt -ljsmn
 
 TRGT = centre
 SRC = metasol.cpp centre.cpp
