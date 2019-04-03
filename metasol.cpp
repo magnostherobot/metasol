@@ -353,8 +353,11 @@ ms_settings fetch_default_settings() {
     s.solved_func = NULL;
     s.reserved_move_count = 1u;
     s.user_data = NULL;
-    s.max_concurrent_threads = 4u;
-    s.max_votes = 100u;
+    s.max_concurrent_threads = 1u;
+    s.max_concurrent_games = 1u;
+    s.vote_count = 100u;
+    s.forever = false;
+    s.seed = 0u;
     return s;
 }
 
@@ -626,13 +629,19 @@ bool go_through_stock(ms_game_state *gs, ms_rules *r) {
 }
 
 bool make_move(ms_game_state *gs, ms_rules *r, ms_move *m) {
+    bool result;
+
     if (m->stock) {
-        return go_through_stock(gs, r);
+        result = go_through_stock(gs, r);
     } else {
         ms_card_pile *from = get_pile_by_index(gs, r, m->from);
         ms_card_pile *to = get_pile_by_index(gs, r, m->to);
-        return move_atop(from, to, m->size, true);
+        result = move_atop(from, to, m->size, true);
     }
+
+    gs->moves_made.push_back(*m);
+
+    return result;
 }
 
 char const *finished_state_str(finished_state f) {
@@ -839,7 +848,7 @@ solve_status run_loop(ms_game_state *gs, ms_rules *r, ms_settings *s,
         ctpl::thread_pool *thpool, vote *votes, thread_info *t_infos,
         ms_game_state *shuffled_states) {
 
-    unsigned vote_count = s->max_votes;
+    unsigned vote_count = s->vote_count;
     ms_move m;
 
     /*
@@ -872,7 +881,7 @@ solve_status run_loop(ms_game_state *gs, ms_rules *r, ms_settings *s,
      * Print information about each voter.
      */
     debug( "%-15s %-10s %3s\n", "state", "move", "moves left");
-    for (unsigned i = 0; i < s->max_votes; ++i) {
+    for (unsigned i = 0; i < s->vote_count; ++i) {
         if (votes[i].moves.empty()) {
             debug("%-15s\n", finished_state_str(votes[i].result));
         } else {
@@ -905,27 +914,17 @@ solve_status run_loop(ms_game_state *gs, ms_rules *r, ms_settings *s,
 int ms_run(ms_game_state *gs, ms_rules *r, ms_settings *s,
         ctpl::thread_pool *tp) {
 
-    /*
-     * Here is where the memory required for storing all of the information
-     * about the maximum number of voters is allocated. Currently the largest
-     * memory quantity that could possibly be required (the case where the max
-     * number of votes is needed), although if this number is significantly
-     * larger than the usual quantity required then maybe this should start low
-     * and be stepped up only if necessary.
-     */
-#   define gimme_mem(t) ((t *) malloc(sizeof(t) * s->max_votes))
-
-    std::vector<vote> votes(s->max_votes);;
+    std::vector<vote> votes(s->vote_count);
     for (vote &v : votes) {
         v.result = CANCELLED;
     }
 
-    thread_info *t_infos = gimme_mem(thread_info);
-    ms_game_state *states = gimme_mem(ms_game_state);
+    std::vector<thread_info> t_infos(s->vote_count);
+    std::vector<ms_game_state> states(s->vote_count);
 
     solve_status x;
     do {
-        x = run_loop(gs, r, s, tp, &votes[0], t_infos, states);
+        x = run_loop(gs, r, s, tp, &votes[0], t_infos.data(), states.data());
     } while (x == KEEP_GOING);
 
     printf("solveseed: %lu\tdealseed: %lu\tsuccess: %s\n", s->seed, gs->seed,
@@ -947,20 +946,38 @@ int ms_run_single(ms_rules *r, ms_settings *s, unsigned long seed) {
 
 int ms_run_infinite(int tid, ms_rules *r, ms_settings *s, ctpl::thread_pool *tp,
         unsigned n, unsigned i) {
-    for (unsigned long id = i; true; i += n) {
+    for (unsigned long id = i; true; id += n) {
         run_single(r, s, id, tp);
     }
     return 0;
+}
+
+ctpl::thread_pool *main_thread_pool;
+void exit_run_many(int _) {
+    main_thread_pool->interrupt(false);
 }
 
 int ms_run_many(ms_rules *r, ms_settings *s) {
     unsigned n = s->max_concurrent_games;
     ctpl::thread_pool game_tp(n);
 
+    std::vector<std::future<int>> fs;
     ctpl::thread_pool main_tp(s->max_concurrent_threads);
-    for (unsigned i = 0; i < n; ++i) {
-        game_tp.push(ms_run_infinite, r, s, &main_tp, n, i);
+    for (unsigned i = 1; i <= n; ++i) {
+        fs.push_back(game_tp.push(ms_run_infinite, r, s, &main_tp, n, i));
     }
+
+    main_thread_pool = &main_tp;
+    /* signal(SIGINT, exit_run_many); */
+
+    /*
+     * these will run forever, unless stopped by ^C
+     */
+    for (auto &f : fs) {
+        assert(f.valid());
+        f.wait();
+    }
+
     return 0;
 }
 

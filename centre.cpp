@@ -18,12 +18,13 @@ Usage: centre <rules_file> [options]
        centre --help|-h
 
 Options:
-  -h --help                Display this help.
-  -g FILE --game FILE      Specify a file describing a game-state.
   --dealseed SEED          Specify a seed to use when randomly generating a game
                            (set to 0 to use an unspecified seed).
-  --solveseed SEED         Specify a seed for the solver to use
-                           (set to 0 to use an unspecified seed).
+  -h --help                Display this help.
+  -f --forever             Run forever, on as many games as possible.
+  -g FILE --game FILE      Specify a file describing a game-state.
+  --solveseed SEED         Specify a seed for the solver to use (set to 0 to use
+                           an unspecified seed).
   -s FILE --settings FILE  Specify a settings file.
   -v --version             Display version.)";
 
@@ -544,7 +545,7 @@ ms_settings get_settings(user_data *d) {
     s.reserved_move_count = 0u;
     s.max_concurrent_threads = 24u;
     s.max_concurrent_games = 5u;
-    s.max_votes = 10u;
+    s.vote_count = 10u;
 
     s.user_data = (void *) d;
 
@@ -773,6 +774,15 @@ void json_settings(ms_settings *s, const char *filename) {
                         &s->max_concurrent_games);
 
                 arp("seed", NUMBER_TYPE, &s->seed);
+                arp("solveseed", NUMBER_TYPE, &s->seed);
+                arp("solve seed", NUMBER_TYPE, &s->seed);
+                arp("solve_seed", NUMBER_TYPE, &s->seed);
+                arp("solve-seed", NUMBER_TYPE, &s->seed);
+
+                arp("forever", BOOL_TYPE, &s->forever);
+                arp("run forever", BOOL_TYPE, &s->forever);
+                arp("run_forever", BOOL_TYPE, &s->forever);
+                arp("run-forever", BOOL_TYPE, &s->forever);
 
             } default: {
                 assert(false);
@@ -1106,30 +1116,28 @@ ms_settings make_settings(std::map<std::string, docopt::value> &args,
             strtoll(args["--solveseed"].asString().c_str(), NULL, 0);
     }
 
+    if (args["--forever"]) {
+        s.forever = args["--forever"].asBool();
+    }
+
     s.rng = std::default_random_engine{s.seed};
     return s;
 }
 
-void parse_args(int argc, char **argv, ms_game_state *gs, ms_rules *r,
-        ms_settings *s, user_data *d) {
-
+int main(int argc, char **argv) {
     auto args = docopt::docopt(USAGE, { argv + 1, argv + argc }, true,
             VERSION_STR);
 
-    *s = make_settings(args, d);
-    *r = make_rules(args);
-    *gs = make_game_state(r, args);
-}
-
-int main(int argc, char **argv) {
-    ms_rules r;
-    ms_settings s;
-    ms_game_state gs;
-
     user_data d = get_user_data();
+    ms_settings s = make_settings(args, &d);
+    ms_rules r = make_rules(args);
 
-    parse_args(argc, argv, &gs, &r, &s, &d);
+    if (s.forever) {
+        return ms_run_many(&r, &s);
+    } else {
+        ms_game_state gs = make_game_state(&r, args);
+        ctpl::thread_pool tp(s.max_concurrent_threads);
 
-    ctpl::thread_pool tp(s.max_concurrent_threads);
-    return ms_run(&gs, &r, &s, &tp);
+        return ms_run(&gs, &r, &s, &tp);
+    }
 }

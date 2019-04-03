@@ -571,26 +571,6 @@ typedef std::vector<ms_card> ms_card_pile;
 ms_card ms_str_card(char *str, bool fd);
 
 /**
- * Representation of a deal-in-progress.
- *
- * Basically just the exact status of each pile.
- */
-typedef struct {
-    std::vector<ms_card_pile> foundations;
-    ms_card_pile stock;
-    ms_card_pile waste;
-    std::vector<ms_card_pile> tableau;
-    ms_card_pile hole;
-    std::vector<ms_card_pile> cells;
-    ms_card_pile reserve;
-
-    /**
-     * The seed used for random generation of the game-state.
-     */
-    long seed;
-} ms_game_state;
-
-/**
  * Representation of a move.
  *
  * Stock moves are treated differently from regular moves.
@@ -622,6 +602,32 @@ typedef struct {
 } ms_move;
 
 /**
+ * Representation of a deal-in-progress.
+ *
+ * Basically just the exact status of each pile.
+ */
+typedef struct {
+    std::vector<ms_card_pile> foundations;
+    ms_card_pile stock;
+    ms_card_pile waste;
+    std::vector<ms_card_pile> tableau;
+    ms_card_pile hole;
+    std::vector<ms_card_pile> cells;
+    ms_card_pile reserve;
+
+    /**
+     * The seed used for random generation of the game-state.
+     */
+    long seed;
+
+    /**
+     * The moves made in order to get to this game-state.
+     */
+    std::vector<ms_move> moves_made;
+
+} ms_game_state;
+
+/**
  * The reported status of a voter after a run.
  */
 enum finished_state {
@@ -636,7 +642,7 @@ enum finished_state {
      * the game-state it was given.
      */
     NO_SOLUTION,
-    
+
     /**
      * The voter was unable to find a solution _or_ exhaust all options before
      * stopping for some other reason.
@@ -755,7 +761,7 @@ typedef struct {
     /**
      * How many votes are used to determine the next move.
      */
-    unsigned max_votes;
+    unsigned vote_count;
 
     /**
      * The seed used when shuffling face-down cards around.
@@ -766,6 +772,11 @@ typedef struct {
      * The random generator used when shuffling face-down cards around.
      */
     std::default_random_engine rng;
+
+    /**
+     * `true` when running infinitely.
+     */
+    bool forever;
 
 } ms_settings;
 
