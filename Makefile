@@ -20,7 +20,6 @@ $(TRGT): $(OBJ)
 init-submodules:
 	git submodule init
 	git submodule update
-	$(MAKE) -C thpool
 	$(MAKE) -C jsmn
 	(cd docopt; cmake .) ; $(MAKE) -C docopt docopt_s
 	(cd solvitaire; sh build.sh)
