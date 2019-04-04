@@ -1131,9 +1131,8 @@ int remove_all_by_rank(ms_card_pile *p, card_rank r) {
 ms_game_state random_game_state(long user_seed, ms_rules *r) {
     ms_game_state gs;
 
-    std::random_device rd;
     auto seed = user_seed ? user_seed : static_cast<long unsigned>(time(0));
-    auto rng = std::default_random_engine{seed};
+    std::mt19937 rng{ seed };
 
     ms_card_pile deck;
     make_deck(r, &deck);

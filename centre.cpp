@@ -1120,7 +1120,7 @@ ms_settings make_settings(std::map<std::string, docopt::value> &args,
         s.forever = args["--forever"].asBool();
     }
 
-    s.rng = std::default_random_engine{s.seed};
+    s.rng = std::mt19937{ s.seed };
     return s;
 }
 

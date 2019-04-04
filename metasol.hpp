@@ -771,7 +771,7 @@ typedef struct {
     /**
      * The random generator used when shuffling face-down cards around.
      */
-    std::default_random_engine rng;
+    std::mt19937 rng;
 
     /**
      * `true` when running infinitely.
