@@ -20,10 +20,12 @@ Usage: centre <rules_file> [options]
 Options:
   --dealseed SEED          Specify a seed to use when randomly generating a game
                            (set to 0 to use an unspecified seed).
+  --dealseedfile FILE      Specify a list of seeds to use when randomly
+                           generating games.
   -h --help                Display this help.
   -f --forever             Run forever, on as many games as possible.
   -g FILE --game FILE      Specify a file describing a game-state.
-  --limitnodes             Specify a limit to the number of nodes traversible by
+  --limitnodes NODES       Specify a limit to the number of nodes traversible by
                            a single run of Solvitaire (supercedes --limittime).
   --limittime MSECONDS     Specify a time limit used for each individual run of
                            Solvitaire, in milliseconds (superceded by
@@ -309,6 +311,7 @@ typedef struct user_data {
     unsigned run_cache_size;
     uint64_t run_timeout;
     uint64_t run_node_limit;
+    const char *deal_seed_file;
 } user_data;
 
 void print_sgs(ms_game_state *gs, ms_rules *r) {
@@ -1138,6 +1141,10 @@ ms_settings make_settings(std::map<std::string, docopt::value> &args,
         json_settings(&s, d, filename);
     }
 
+    if (args["--dealseedfile"]) {
+        d->deal_seed_file = args["--dealseedfile"].asString().c_str();
+    }
+
     if (args["--limitnodes"]) {
         d->run_node_limit = args["--limitnodes"].asLong();
     }
@@ -1170,9 +1177,14 @@ int main(int argc, char **argv) {
     if (s.forever) {
         return ms_run_many(&r, &s);
     } else {
-        ms_game_state gs = make_game_state(&r, args);
         ctpl::thread_pool tp(s.max_concurrent_threads);
 
-        return ms_run(&gs, &r, &s, &tp);
+        if (d.deal_seed_file) {
+            return ms_run_from_file(&r, &s, d.deal_seed_file, &tp);
+        } else {
+            ms_game_state gs = make_game_state(&r, args);
+
+            return ms_run(&gs, &r, &s, &tp);
+        }
     }
 }

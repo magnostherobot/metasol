@@ -862,4 +862,7 @@ int ms_run_single(ms_rules *rules, ms_settings *settings, unsigned long seed);
  */
 int ms_run_many(ms_rules *rules, ms_settings *settings);
 
+int ms_run_from_file(ms_rules *rules, ms_settings *settings,
+        const char *filename, ctpl::thread_pool *tp);
+
 #endif /* METASOL_H */

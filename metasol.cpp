@@ -939,6 +939,11 @@ int run_single(ms_rules *r, ms_settings *s, unsigned long seed,
     return ms_run(&gs, r, s, tp);
 }
 
+int ms_run_id(int id, unsigned long seed, ms_rules *r, ms_settings *s,
+        ctpl::thread_pool *tp) {
+    return run_single(r, s, seed, tp);
+}
+
 int ms_run_single(ms_rules *r, ms_settings *s, unsigned long seed) {
     ctpl::thread_pool tp(s->max_concurrent_threads);
     return run_single(r, s, seed, &tp);
@@ -977,6 +982,38 @@ int ms_run_many(ms_rules *r, ms_settings *s) {
         assert(f.valid());
         f.wait();
     }
+
+    return 0;
+}
+
+int ms_run_from_file(ms_rules *r, ms_settings *s, const char *filename,
+        ctpl::thread_pool *tp) {
+
+    FILE *fp = fopen(filename, "r");
+    char *line = NULL;
+    size_t len = 0;
+    ssize_t read;
+    std::vector<std::future<int>> fs;
+
+    ctpl::thread_pool main_tp(s->max_concurrent_games);
+
+    while ((read = getline(&line, &len, fp)) != EOF) {
+        unsigned long seed = strtoll(line, NULL, 0);
+        fs.push_back(main_tp.push(ms_run_id, seed, r, s, tp));
+    }
+
+    main_thread_pool = &main_tp;
+
+    /*
+     * these will run forever, unless stopped by ^C
+     */
+    for (auto &f : fs) {
+        assert(f.valid());
+        f.wait();
+    }
+
+    fclose(fp);
+    free(line);
 
     return 0;
 }
