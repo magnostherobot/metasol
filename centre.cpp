@@ -23,6 +23,11 @@ Options:
   -h --help                Display this help.
   -f --forever             Run forever, on as many games as possible.
   -g FILE --game FILE      Specify a file describing a game-state.
+  --limitnodes             Specify a limit to the number of nodes traversible by
+                           a single run of Solvitaire (supercedes --limittime).
+  --limittime MSECONDS     Specify a time limit used for each individual run of
+                           Solvitaire, in milliseconds (superceded by
+                           --limitnodes).
   --solveseed SEED         Specify a seed for the solver to use (set to 0 to use
                            an unspecified seed).
   -s FILE --settings FILE  Specify a settings file.
@@ -302,8 +307,8 @@ game_state convert_game_state(ms_game_state *sgs, ms_rules *r) {
 
 typedef struct user_data {
     unsigned run_cache_size;
-    unsigned run_timeout;
-    unsigned thoughtful_run_timeout;
+    uint64_t run_timeout;
+    uint64_t run_node_limit;
 } user_data;
 
 void print_sgs(ms_game_state *gs, ms_rules *r) {
@@ -437,13 +442,21 @@ unsigned calculate_stock_moves(int n, unsigned *stock, unsigned *waste,
  */
 finished_state run_single(ms_game_state *gs, ms_rules *r,
         std::vector<ms_move> *moves, unsigned move_count, void *data) {
+
     user_data *d = (user_data *) data;
 
     game_state solv_gs = convert_game_state(gs, r);
 
     movelist ml;
-    finished_state result = convert_result(get_moves(ml, solv_gs,
-                d->run_cache_size, d->run_timeout));
+
+    finished_state result;
+    if (d->run_node_limit) {
+        result = convert_result(get_moves_node_limit(ml, solv_gs,
+                    d->run_cache_size, d->run_node_limit));
+    } else {
+        result = convert_result(get_moves(ml, solv_gs, d->run_cache_size,
+                    d->run_timeout));
+    }
 
     if (result == SOLUTION_FOUND) {
         auto n = ml.size();
@@ -517,14 +530,21 @@ finished_state run_single(ms_game_state *gs, ms_rules *r,
     return result;
 }
 
-finished_state thoughtful_run(ms_game_state *gs, ms_rules *r,
-        void *data) {
+finished_state thoughtful_run(ms_game_state *gs, ms_rules *r, void *data) {
     user_data *d = (user_data *) data;
 
     game_state solv_gs = convert_game_state(gs, r);
     movelist ml;
-    return convert_result(get_moves(ml, solv_gs, d->run_cache_size,
-                d->thoughtful_run_timeout));
+    finished_state result;
+    if (d->run_node_limit) {
+        result = convert_result(get_moves_node_limit(ml, solv_gs,
+                    d->run_cache_size, d->run_node_limit));
+    } else {
+        result = convert_result(get_moves(ml, solv_gs, d->run_cache_size,
+                    d->run_timeout));
+    }
+
+    return result;
 }
 
 bool solved(ms_game_state *gs, ms_rules *r, void *d) {
@@ -557,7 +577,6 @@ user_data get_user_data() {
 
     d.run_cache_size = 1000000u;
     d.run_timeout = 20000u;
-    d.thoughtful_run_timeout = 2000000u;
 
     return d;
 }
@@ -716,7 +735,7 @@ int assign_foundations_base(jsmntok_t *key, ms_rules *r, char *js) {
     }
 }
 
-void json_settings(ms_settings *s, const char *filename) {
+void json_settings(ms_settings *s, user_data *d, const char *filename) {
     FILE *f = fopen(filename, "rb");
     long length = filelen(f);
     char *buf = (char *) malloc(length);
@@ -783,6 +802,14 @@ void json_settings(ms_settings *s, const char *filename) {
                 arp("run forever", BOOL_TYPE, &s->forever);
                 arp("run_forever", BOOL_TYPE, &s->forever);
                 arp("run-forever", BOOL_TYPE, &s->forever);
+
+                arp("run timeout", NUMBER_TYPE, &d->run_timeout);
+                arp("run_timeout", NUMBER_TYPE, &d->run_timeout);
+                arp("run-timeout", NUMBER_TYPE, &d->run_timeout);
+
+                arp("run node limit", NUMBER_TYPE, &d->run_timeout);
+                arp("run_node_limit", NUMBER_TYPE, &d->run_timeout);
+                arp("run-node-limit", NUMBER_TYPE, &d->run_timeout);
 
             } default: {
                 assert(false);
@@ -1108,7 +1135,15 @@ ms_settings make_settings(std::map<std::string, docopt::value> &args,
 
     if (args["--settings"]) {
         const char *filename = args["--settings"].asString().c_str();
-        json_settings(&s, filename);
+        json_settings(&s, d, filename);
+    }
+
+    if (args["--limitnodes"]) {
+        d->run_node_limit = args["--limitnodes"].asLong();
+    }
+
+    if (args["--limittime"]) {
+        d->run_timeout = args["--limittime"].asLong();
     }
 
     if (args["--solveseed"]) {
