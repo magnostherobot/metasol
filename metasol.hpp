@@ -23,169 +23,6 @@
 #include "ctpl/ctpl_stl.h"
 
 /**
- * Rule describing what cards other cards can be moved on top of.
- */
-enum build_policy_t {
-
-    /**
-     * You may not move cards onto other cards.
-     */
-    NO_BUILD,
-
-    /**
-     * You may only move cards onto cards of the same suit.
-     */
-    BUILD_SAME_SUIT,
-
-    /**
-     * You may only move cards onto cards of the opposite colour.
-     */
-    BUILD_ALTERNATING,
-
-    /**
-     * You may move cards onto any other card.
-     */
-    BUILD_ANY
-};
-
-/**
- * Converts a string to a build policy.
- *
- * @param str The string to convert.
- * @returns A build policy represented by the given string.
- */
-build_policy_t str_build_policy(char *str);
-
-/**
- * Converts a build policy to its string representation.
- *
- * @param bp The build policy to convert.
- * @returns The string representation of the given build policy.
- */
-const char *build_policy_str(build_policy_t bp);
-
-/**
- * Rule describing what cards can be moved to use empty tableau spaces.
- */
-enum spaces_policy_t {
-
-    /**
-     * You may not move cards into spaces.
-     */
-    NO_SPACE_FILL,
-
-    /**
-     * You may only move kings into spaces.
-     */
-    KINGS_FILL_SPACE,
-
-    /**
-     * You may move any card into a space.
-     */
-    ANY_FILL_SPACE,
-
-    /**
-     * Cards from the reserve are automatically moved into spaces. Once the
-     * reserve is empty, cards from the waste are moved automatically instead.
-     */
-    AUTO_RESERVE_THEN_WASTE,
-
-    /**
-     * Cards from the stock are automatically moved into spaces. Once the stock
-     * is empty, cards from the waste are mvoed automatically instead.
-     */
-    AUTO_WASTE_THEN_STOCK
-};
-
-/**
- * Converts a string to a space policy.
- *
- * @param str the string to convert.
- * @returns A space policy represented by the given string.
- */
-spaces_policy_t str_spaces_policy(char *str);
-
-/**
- * Converts a space policy to its string representation.
- *
- * @param sp The space policy to convert.
- * @returns The string representation of the given space policy.
- */
-const char *spaces_policy_str(spaces_policy_t sp);
-
-/**
- * Rules describing how built groups of cards can be moved when moved
- * together.
- */
-enum built_group_t {
-
-    /**
-     * You may always move built groups.
-     */
-    CAN_MOVE_BUILT_GROUP,
-
-    /**
-     * You may not move built groups.
-     */
-    CANNOT_MOVE_BUILT_GROUP,
-
-    /**
-     * You may only move whole groups.
-     */
-    CAN_MOVE_WHOLE_PILE,
-
-    /*
-     * TODO: what's a maximal group?
-     */
-    /**
-     * You may only move maximal groups.
-     */
-    CAN_MOVE_MAXIMAL_GROUP
-};
-
-/**
- * Converts a string to a built group policy.
- *
- * @param str The string to convert.
- * @returns A built group policy represented by the given string.
- */
-built_group_t str_built_group(char *str);
-
-/**
- * Converts a built group policy to its string representation.
- *
- * @param bgp The built group policy to convert.
- * @returns The string representation of the given built group policy.
- */
-const char *built_group_str(built_group_t bgp);
-
-/**
- * Rule describing accordion moves allowed.
- */
-enum accordion_policy_t {
-    ACCORDION_SAME_RANK,
-    ACCORDION_SAME_SUIT,
-    ACCORDION_ALTERNATE_COLOUR,
-    ACCORDION_ANY_SUIT
-};
-
-/**
- * Converts a string to an accordion policy.
- *
- * @param str The string to convert.
- * @returns An accordion policy represented by the given string.
- */
-accordion_policy_t str_accordion_policy(char *str);
-
-/**
- * Converts an accordion policy to its string representation.
- *
- * @param ap The accordion policy to convert.
- * @returns The string representation of the given accordion policy.
- */
-const char *accordion_policy_str(accordion_policy_t ap);
-
-/**
  * Rule describing how the stock is used.
  */
 enum stock_deal_t {
@@ -254,31 +91,6 @@ face_up_policy_t str_face_up_policy(char *str);
  * @returns The string representation of the given face-up policy.
  */
 const char *face_up_policy_str(face_up_policy_t fup);
-
-/**
- * Build directions for accordion games.
- */
-enum direction_t {
-    LEFT,
-    RIGHT,
-    BOTH
-};
-
-/**
- * Converts a string to a direction.
- *
- * @param str The string to convert.
- * @returns A direction represented by the given string.
- */
-direction_t str_direction(char *str);
-
-/**
- * Converts a direction to its string representation.
- *
- * @param d The direction to convert.
- * @returns The string representation of the given direction.
- */
-const char *direction_str(direction_t d);
 
 /**
  * Rule describing how many foundations piles start with a initial card.
@@ -359,26 +171,6 @@ typedef struct {
     unsigned tableau_size;
 
     /**
-     * The build policy when moving individual cards.
-     */
-    build_policy_t build_policy;
-
-    /**
-     * The spaces policy.
-     */
-    spaces_policy_t spaces_policy;
-
-    /**
-     * The built group move policy.
-     */
-    built_group_t move_built_group;
-
-    /**
-     * The build policy when moving built groups.
-     */
-    build_policy_t built_group_policy;
-
-    /**
      * The number of decks used for dealing.
      */
     unsigned deck_count;
@@ -394,13 +186,6 @@ typedef struct {
      * Whether or not a "hole" pile is used in the game.
      */
     bool hole_present;
-
-    /**
-     * Whether or not building runs in the hole loops at the ends of the scale.
-     *
-     * Enabling this rule allows kings to be placed on aces, and vice versa.
-     */
-    bool hole_build_loops;
 
     /**
      * Whether or not foundations are used in the game.
@@ -425,17 +210,6 @@ typedef struct {
      * Only used if `specific_foundations_base` is `true`.
      */
     card_rank foundations_base;
-
-    /**
-     * Whether or not cards can be moved from the foundations once they have
-     * been placed there.
-     */
-    bool foundations_removable;
-
-    /**
-     * TODO: I actually don't know what this rule does.
-     */
-    bool foundations_only_comp_piles;
 
     /**
      * Whether or not the tableau should be dealt as a digonal deal.
@@ -503,34 +277,9 @@ typedef struct {
     unsigned sequence_count;
 
     /**
-     * The direction of building the sequence.
-     */
-    direction_t sequence_direction;
-
-    /**
-     * The build policy for cards in the sequence.
-     */
-    build_policy_t sequence_build_policy;
-
-    /**
-     * Whether or not the sequence has a fixed suit.
-     */
-    bool sequence_fixed_suit;
-
-    /**
      * The number of cards in the accordion at the beginning of the game.
      */
     unsigned accordion_size;
-
-    /**
-     * The different possible accordion moves.
-     */
-    std::vector<std::pair<direction_t, int>> accordion_moves;
-
-    /**
-     * The policies for each accordion move.
-     */
-    std::vector<accordion_policy_t> accordion_policy;
 
 } ms_rules;
 

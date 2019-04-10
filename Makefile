@@ -1,5 +1,5 @@
 CXX = g++
-CXXFLAGS = -ggdb3 -O0 -Wpedantic -Wall -Werror -std=c++17
+CXXFLAGS = -Og -Wpedantic -Wall -Werror -std=c++17
 OUTPUT_OPTION = -MMD -MP -o $@
 
 LINK.o = $(LINK.cc)

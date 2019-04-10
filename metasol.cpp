@@ -13,7 +13,7 @@
 
 card_suit SUITS[4] = { HEARTS, SPADES, CLUBS, DIAMONDS };
 
-void lower(char *str) {
+inline void lower(char *str) {
     for (; *str; ++str) *str = tolower(*str);
 }
 
@@ -52,138 +52,6 @@ unsigned face_down_count(ms_game_state *gs) {
 }
 
 #define kv_dict(t) std::map<const char *, t, dictcmp>
-
-build_policy_t str_build_policy(char *str) {
-    kv_dict(build_policy_t) dict = {
-        { "no build", NO_BUILD },
-        { "no-build", NO_BUILD },
-        { "none", NO_BUILD },
-
-        { "same suit", BUILD_SAME_SUIT },
-        { "same-suit", BUILD_SAME_SUIT },
-        { "suits", BUILD_SAME_SUIT },
-
-        { "alternating", BUILD_ALTERNATING },
-        { "red-black", BUILD_ALTERNATING },
-
-        { "any", BUILD_ANY },
-        { "any-suit", BUILD_ANY },
-        { "all", BUILD_ANY }
-    };
-
-    lower(str);
-    auto result = dict.find(str);
-
-    if (result == dict.end()) {
-        errx(EXIT_FAILURE, "unknown key '%s'", str);
-    }
-
-    return result->second;
-}
-
-const char *build_policy_str(build_policy_t bp) {
-    const char *const build_policy_arr[] = {
-        "NO_BUILD",
-        "BUILD_SAME_SUIT",
-        "BUILD_ALTERNATING",
-        "BUILD_ANY"
-    };
-
-    return build_policy_arr[bp];
-}
-
-spaces_policy_t str_spaces_policy(char *str) {
-    kv_dict(spaces_policy_t) dict = {
-        { "none", NO_SPACE_FILL },
-        { "no fill", NO_SPACE_FILL },
-        { "no-fill", NO_SPACE_FILL },
-        { "no_fill", NO_SPACE_FILL },
-
-        { "kings only", KINGS_FILL_SPACE },
-        { "kings-only", KINGS_FILL_SPACE },
-        { "kings_only", KINGS_FILL_SPACE },
-        { "kings", KINGS_FILL_SPACE },
-
-        { "any", ANY_FILL_SPACE },
-        { "all", ANY_FILL_SPACE },
-
-        { "reserve first", AUTO_RESERVE_THEN_WASTE },
-        { "reserve-first", AUTO_RESERVE_THEN_WASTE },
-        { "reserve_first", AUTO_RESERVE_THEN_WASTE },
-        { "reserve then waste", AUTO_RESERVE_THEN_WASTE },
-        { "reserve-then-waste", AUTO_RESERVE_THEN_WASTE },
-        { "reserve_then_waste", AUTO_RESERVE_THEN_WASTE },
-
-        { "waste first", AUTO_WASTE_THEN_STOCK },
-        { "waste-first", AUTO_WASTE_THEN_STOCK },
-        { "waste_first", AUTO_WASTE_THEN_STOCK },
-        { "waste then stock", AUTO_WASTE_THEN_STOCK },
-        { "waste-then-stock", AUTO_WASTE_THEN_STOCK },
-        { "waste_then_stock", AUTO_WASTE_THEN_STOCK }
-    };
-
-    lower(str);
-    auto result = dict.find(str);
-
-    if (result == dict.end()) {
-        errx(EXIT_FAILURE, "unknown key '%s'", str);
-    }
-
-    return result->second;
-}
-
-const char *spaces_policy_str(spaces_policy_t bp) {
-    const char *const spaces_policy_arr[] = {
-        "NO_SPACE_FILL",
-        "KINGS_FILL_SPACE",
-        "ANY_FILL_SPACE",
-        "AUTO_RESERVE_THEN_WASTE",
-        "AUTO_WASTE_THEN_STOCK"
-    };
-
-    return spaces_policy_arr[bp];
-}
-
-accordion_policy_t str_accordion_policy(char *str) {
-    kv_dict(accordion_policy_t) dict = {
-        { "same rank", ACCORDION_SAME_RANK },
-        { "same-rank", ACCORDION_SAME_RANK },
-        { "same_rank", ACCORDION_SAME_RANK },
-        { "rank", ACCORDION_SAME_RANK },
-
-        { "same suit", ACCORDION_SAME_SUIT },
-        { "same-suit", ACCORDION_SAME_SUIT },
-        { "same_suit", ACCORDION_SAME_SUIT },
-        { "suit", ACCORDION_SAME_SUIT },
-
-        { "alternating colour", ACCORDION_ALTERNATE_COLOUR },
-        { "alternating-colour", ACCORDION_ALTERNATE_COLOUR },
-        { "alternating_colour", ACCORDION_ALTERNATE_COLOUR },
-        { "red-black", ACCORDION_ALTERNATE_COLOUR },
-
-        { "any", ACCORDION_ANY_SUIT }
-    };
-
-    lower(str);
-    auto result = dict.find(str);
-
-    if (result == dict.end()) {
-        errx(EXIT_FAILURE, "unknown key '%s'", str);
-    }
-
-    return result->second;
-}
-
-const char *accordion_policy_str(accordion_policy_t bp) {
-    const char *const accordion_policy_arr[] = {
-        "ACCORDION_SAME_RANK",
-        "ACCORDION_SAME_SUIT",
-        "ACCORDION_ALTERNATE_COLOUR",
-        "ACCORDION_ANY_SUIT"
-    };
-
-    return accordion_policy_arr[bp];
-}
 
 stock_deal_t str_stock_deal(char *str) {
     kv_dict(stock_deal_t) dict = {
@@ -248,71 +116,6 @@ const char *face_up_policy_str(face_up_policy_t bp) {
     };
 
     return face_up_policy_arr[bp];
-}
-
-direction_t str_direction(char *str) {
-    kv_dict(direction_t) dict = {
-        { "left", LEFT },
-
-        { "right", RIGHT },
-
-        { "both", BOTH },
-        { "lr", BOTH }
-    };
-
-    lower(str);
-    auto result = dict.find(str);
-
-    if (result == dict.end()) {
-        errx(EXIT_FAILURE, "unknown key '%s'", str);
-    }
-
-    return result->second;
-}
-
-const char *direction_str(direction_t bp) {
-    const char *const direction_arr[] = {
-        "LEFT",
-        "RIGHT",
-        "BOTH"
-    };
-
-    return direction_arr[bp];
-}
-
-built_group_t str_built_group(char *str) {
-    kv_dict(built_group_t) dict = {
-        { "yes", CAN_MOVE_BUILT_GROUP },
-
-        { "no", CANNOT_MOVE_BUILT_GROUP },
-        { "none", CANNOT_MOVE_BUILT_GROUP },
-
-        { "whole pile only", CAN_MOVE_WHOLE_PILE },
-        { "whole pile", CAN_MOVE_WHOLE_PILE },
-
-        { "maximal group only", CAN_MOVE_MAXIMAL_GROUP },
-        { "maximal", CAN_MOVE_MAXIMAL_GROUP }
-    };
-
-    lower(str);
-    auto result = dict.find(str);
-
-    if (result == dict.end()) {
-        errx(EXIT_FAILURE, "unknown key '%s'", str);
-    }
-
-    return result->second;
-}
-
-const char *built_group_str(built_group_t bp) {
-    const char *const built_group_arr[] = {
-        "CAN_MOVE_BUILT_GROUP",
-        "CANNOT_MOVE_BUILT_GROUP",
-        "CAN_MOVE_WHOLE_PILE",
-        "CAN_MOVE_MAXIMAL_GROUP"
-    };
-
-    return built_group_arr[bp];
 }
 
 foundations_init_t str_foundations_init(char *str) {
@@ -871,11 +674,11 @@ solve_status run_loop(ms_game_state *gs, ms_rules *r, ms_settings *s,
         ms_game_state *shuffled_states) {
 
     /*
-     * If there are no face-down cards, then any voter run should tell us if the
-     * deal is solvable. This function is only entered if a voter found a
-     * solution, so it can be inferred that a solution is found.
+     * If there is exactly zero or one face-down cards, then any voter run
+     * should tell us if the deal is solvable. This function is only entered if
+     * a voter found a solution, so it can be inferred that a solution is found.
      */
-    if (face_down_count(gs) == 0) {
+    if (face_down_count(gs) <= 1) {
         debug("solution found!\n");
         return SOLVED;
     }
@@ -1047,23 +850,16 @@ ms_rules fetch_default_rules() {
     ms_rules dr;
 
     dr.tableau_size = 8u;
-    dr.build_policy = BUILD_ANY;
-    dr.spaces_policy = ANY_FILL_SPACE;
-    dr.move_built_group = CANNOT_MOVE_BUILT_GROUP;
-    dr.built_group_policy = NO_BUILD;
 
     dr.deck_count = 1u;
     dr.max_rank = 13u;
 
     dr.hole_present = false;
-    dr.hole_build_loops = true;
 
     dr.foundations_present = true;
     dr.foundations_init_cards = NO_FOUNDATION_INIT;
     dr.specific_foundations_base = true;
     dr.foundations_base = 1u;
-    dr.foundations_removable = false;
-    dr.foundations_only_comp_piles = false;
 
     dr.diagonal_deal = false;
     dr.cells = 0u;
@@ -1080,75 +876,12 @@ ms_rules fetch_default_rules() {
     dr.face_up_policy = ALL_CARDS_FACE_UP;
 
     dr.sequence_count = 0u;
-    dr.sequence_direction = RIGHT;
-    dr.sequence_build_policy = dr.build_policy;
-    dr.sequence_fixed_suit = false;
 
     dr.accordion_size = 0;
     /* dr.accordion_moves is an empty vector */
     /* dr.accordion_policy is an empty vector */
 
     return dr;
-}
-
-void print_rules(ms_rules *r, FILE *fh = stdout) {
-    fprintf(fh, "tableau size: %u\n"
-            "build policy: %s\n"
-            "spaces policy: %s\n"
-            "move built group: %s\n"
-            "built group policy: %s\n"
-            "deck count: %u\n"
-            "max rank: %u\n"
-            "hole: %s\n"
-            "foundations: %s\n"
-            "foundations init cards: %s\n"
-            "foundations base: %u\n"
-            "foundations removable: %s\n"
-            "foundations only accept complete piles: %s\n"
-            "diagonal deal: %s\n"
-            "cell count: %u\n"
-            "cells pre-filled: %s\n"
-            "cards in stock: %u\n"
-            "stock deal method: %s\n"
-            "stock deal count: %u\n"
-            "stock redeal: %s\n"
-            "cards in reserve: %u\n"
-            "reserve stacked: %s\n"
-            "face up policy: %s\n"
-            "sequences: %u\n"
-            "sequence direction: %s\n"
-            "sequence build policy: %s\n"
-            "sequence fixed suit: %s\n"
-            "cards in accordion: %u\n"
-            "(TODO: accordion moves)",
-        r->tableau_size,
-        build_policy_str(r->build_policy),
-        spaces_policy_str(r->spaces_policy),
-        built_group_str(r->move_built_group),
-        build_policy_str(r->built_group_policy),
-        r->deck_count,
-        r->max_rank,
-        bool_str(r->hole_present),
-        bool_str(r->foundations_present),
-        bool_str(r->foundations_init_cards),
-        r->foundations_base,
-        bool_str(r->foundations_removable),
-        bool_str(r->foundations_only_comp_piles),
-        bool_str(r->diagonal_deal),
-        r->cells,
-        bool_str(r->cells_pre_filled),
-        r->stock_size,
-        stock_deal_str(r->stock_deal_method),
-        r->stock_deal_count,
-        bool_str(r->stock_redeal),
-        r->reserve_size,
-        bool_str(r->reserve_stacked),
-        face_up_policy_str(r->face_up_policy),
-        r->sequence_count,
-        direction_str(r->sequence_direction),
-        build_policy_str(r->sequence_build_policy),
-        bool_str(r->sequence_fixed_suit),
-        r->accordion_size);
 }
 
 int make_deck(ms_rules *r, ms_card_pile *buf) {

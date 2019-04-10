@@ -11,6 +11,26 @@
 #include "metasol.hpp"
 #include "debug.h"
 
+typedef struct {
+    unsigned run_cache_size;
+    uint64_t run_timeout;
+    uint64_t run_node_limit;
+    const char *deal_seed_file;
+
+    sol_rules::build_policy build_policy;
+    sol_rules::spaces_policy spaces_policy;
+    sol_rules::built_group_type move_built_group;
+    sol_rules::build_policy built_group_policy;
+    bool hole_build_loops;
+    bool foundations_removable;
+    bool foundations_only_comp_piles;
+    sol_rules::direction sequence_direction;
+    sol_rules::build_policy sequence_build_policy;
+    bool sequence_fixed_suit;
+    std::vector<std::pair<sol_rules::direction, uint8_t>> accordion_moves;
+    std::vector<sol_rules::accordion_policy> accordion_policy;
+} user_data;
+
 static const char USAGE[] =
 R"(centre - a metasol instance.
 
@@ -37,44 +57,44 @@ Options:
 
 static const char VERSION_STR[] = "Solver in-development";
 
-sol_rules::build_policy convert_build_policy(build_policy_t bp) {
-    switch (bp) {
-        case NO_BUILD:          return sol_rules::build_policy::NO_BUILD;
-        case BUILD_SAME_SUIT:   return sol_rules::build_policy::SAME_SUIT;
-        case BUILD_ALTERNATING: return sol_rules::build_policy::RED_BLACK;
-        case BUILD_ANY:         return sol_rules::build_policy::ANY_SUIT;
-        default: assert(false);
-    }
+inline void lower(char *str) {
+    for (; *str; ++str) *str = tolower(*str);
 }
 
-sol_rules::spaces_policy convert_spaces_policy(spaces_policy_t sp) {
-    switch (sp) {
-        case NO_SPACE_FILL:
-            return sol_rules::spaces_policy::NO_BUILD;
-        case KINGS_FILL_SPACE:
-            return sol_rules::spaces_policy::KINGS;
-        case ANY_FILL_SPACE:
-            return sol_rules::spaces_policy::ANY;
-        case AUTO_RESERVE_THEN_WASTE:
-            return sol_rules::spaces_policy::AUTO_RESERVE_THEN_WASTE;
-        case AUTO_WASTE_THEN_STOCK:
-            return sol_rules::spaces_policy::AUTO_WASTE_THEN_STOCK;
-        default: assert(false);
+struct dictcmp {
+    bool operator()(const char *a, const char *b) const {
+        return strcmp(a, b) < 0;
     }
-}
+};
 
-sol_rules::accordion_policy convert_accordion_policy(accordion_policy_t ap) {
-    switch (ap) {
-        case ACCORDION_SAME_RANK:
-            return sol_rules::accordion_policy::SAME_RANK;
-        case ACCORDION_SAME_SUIT:
-            return sol_rules::accordion_policy::SAME_SUIT;
-        case ACCORDION_ALTERNATE_COLOUR:
-            return sol_rules::accordion_policy::RED_BLACK;
-        case ACCORDION_ANY_SUIT:
-            return sol_rules::accordion_policy::ANY_SUIT;
-        default: assert(false);
+#define kv_dict(t) std::map<const char *, t, dictcmp>
+
+sol_rules::build_policy str_build_policy(char *str) {
+    kv_dict(sol_rules::build_policy) dict = {
+        { "no build", sol_rules::build_policy::NO_BUILD },
+        { "no-build", sol_rules::build_policy::NO_BUILD },
+        { "none", sol_rules::build_policy::NO_BUILD },
+
+        { "same suit", sol_rules::build_policy::SAME_SUIT },
+        { "same-suit", sol_rules::build_policy::SAME_SUIT },
+        { "suits", sol_rules::build_policy::SAME_SUIT },
+
+        { "alternating", sol_rules::build_policy::RED_BLACK },
+        { "red-black", sol_rules::build_policy::RED_BLACK },
+
+        { "any", sol_rules::build_policy::ANY_SUIT },
+        { "any-suit", sol_rules::build_policy::ANY_SUIT },
+        { "all", sol_rules::build_policy::ANY_SUIT }
+    };
+
+    lower(str);
+    auto result = dict.find(str);
+
+    if (result == dict.end()) {
+        errx(EXIT_FAILURE, "unknown key '%s'", str);
     }
+
+    return result->second;
 }
 
 sol_rules::stock_deal_type convert_stock_deal(stock_deal_t sd) {
@@ -94,29 +114,6 @@ sol_rules::face_up_policy convert_face_up_policy(face_up_policy_t fup) {
     }
 }
 
-sol_rules::direction convert_direction(direction_t d) {
-    switch (d) {
-        case LEFT:  return sol_rules::direction::LEFT;
-        case RIGHT: return sol_rules::direction::RIGHT;
-        case BOTH:  return sol_rules::direction::BOTH;
-        default: assert(false);
-    }
-}
-
-sol_rules::built_group_type convert_built_group(built_group_t bg) {
-    switch (bg) {
-        case CAN_MOVE_BUILT_GROUP:
-            return sol_rules::built_group_type::YES;
-        case CANNOT_MOVE_BUILT_GROUP:
-            return sol_rules::built_group_type::NO;
-        case CAN_MOVE_WHOLE_PILE:
-            return sol_rules::built_group_type::WHOLE_PILE;
-        case CAN_MOVE_MAXIMAL_GROUP:
-            return sol_rules::built_group_type::MAXIMAL_GROUP;
-        default: assert(false);
-    }
-}
-
 sol_rules::foundations_init_type convert_foundations_init(
         foundations_init_t fi) {
     switch (fi) {
@@ -130,22 +127,143 @@ sol_rules::foundations_init_type convert_foundations_init(
     }
 }
 
-sol_rules convert_rules(ms_rules *sr) {
+sol_rules::spaces_policy str_spaces_policy(char *str) {
+    kv_dict(sol_rules::spaces_policy) dict = {
+        { "none", sol_rules::spaces_policy::NO_BUILD },
+        { "no fill", sol_rules::spaces_policy::NO_BUILD },
+        { "no-fill", sol_rules::spaces_policy::NO_BUILD },
+        { "no_fill", sol_rules::spaces_policy::NO_BUILD },
+
+        { "kings only", sol_rules::spaces_policy::KINGS },
+        { "kings-only", sol_rules::spaces_policy::KINGS },
+        { "kings_only", sol_rules::spaces_policy::KINGS },
+        { "kings", sol_rules::spaces_policy::KINGS },
+
+        { "any", sol_rules::spaces_policy::ANY },
+        { "all", sol_rules::spaces_policy::ANY },
+
+        { "reserve first", sol_rules::spaces_policy::AUTO_RESERVE_THEN_WASTE },
+        { "reserve-first", sol_rules::spaces_policy::AUTO_RESERVE_THEN_WASTE },
+        { "reserve_first", sol_rules::spaces_policy::AUTO_RESERVE_THEN_WASTE },
+        { "reserve then waste",
+            sol_rules::spaces_policy::AUTO_RESERVE_THEN_WASTE },
+        { "reserve-then-waste",
+            sol_rules::spaces_policy::AUTO_RESERVE_THEN_WASTE },
+        { "reserve_then_waste",
+            sol_rules::spaces_policy::AUTO_RESERVE_THEN_WASTE },
+
+        { "waste first", sol_rules::spaces_policy::AUTO_WASTE_THEN_STOCK },
+        { "waste-first", sol_rules::spaces_policy::AUTO_WASTE_THEN_STOCK },
+        { "waste_first", sol_rules::spaces_policy::AUTO_WASTE_THEN_STOCK },
+        { "waste then stock", sol_rules::spaces_policy::AUTO_WASTE_THEN_STOCK },
+        { "waste-then-stock", sol_rules::spaces_policy::AUTO_WASTE_THEN_STOCK },
+        { "waste_then_stock", sol_rules::spaces_policy::AUTO_WASTE_THEN_STOCK }
+    };
+
+    lower(str);
+    auto result = dict.find(str);
+
+    if (result == dict.end()) {
+        errx(EXIT_FAILURE, "unknown key '%s'", str);
+    }
+
+    return result->second;
+}
+
+sol_rules::direction str_direction(char *str) {
+    kv_dict(sol_rules::direction) dict = {
+        { "left", sol_rules::direction::LEFT },
+
+        { "right", sol_rules::direction::RIGHT },
+
+        { "both", sol_rules::direction::BOTH },
+        { "lr", sol_rules::direction::BOTH }
+    };
+
+    lower(str);
+    auto result = dict.find(str);
+
+    if (result == dict.end()) {
+        errx(EXIT_FAILURE, "unknown key '%s'", str);
+    }
+
+    return result->second;
+}
+
+sol_rules::built_group_type str_built_group(char *str) {
+    kv_dict(sol_rules::built_group_type) dict = {
+        { "yes", sol_rules::built_group_type::YES },
+
+        { "no", sol_rules::built_group_type::NO },
+        { "none", sol_rules::built_group_type::NO },
+
+        { "whole pile only", sol_rules::built_group_type::WHOLE_PILE },
+        { "whole pile", sol_rules::built_group_type::WHOLE_PILE },
+
+        { "maximal group only", sol_rules::built_group_type::MAXIMAL_GROUP },
+        { "maximal", sol_rules::built_group_type::MAXIMAL_GROUP }
+    };
+
+    lower(str);
+    auto result = dict.find(str);
+
+    if (result == dict.end()) {
+        errx(EXIT_FAILURE, "unknown key '%s'", str);
+    }
+
+    return result->second;
+}
+
+sol_rules::accordion_policy str_accordion_policy(char *str) {
+    kv_dict(sol_rules::accordion_policy) dict = {
+        { "same rank", sol_rules::accordion_policy::SAME_RANK },
+        { "same-rank", sol_rules::accordion_policy::SAME_RANK },
+        { "same_rank", sol_rules::accordion_policy::SAME_RANK },
+        { "rank", sol_rules::accordion_policy::SAME_RANK },
+
+        { "same suit", sol_rules::accordion_policy::SAME_SUIT },
+        { "same-suit", sol_rules::accordion_policy::SAME_SUIT },
+        { "same_suit", sol_rules::accordion_policy::SAME_SUIT },
+        { "suit", sol_rules::accordion_policy::SAME_SUIT },
+
+        { "alternating colour",
+            sol_rules::accordion_policy::RED_BLACK },
+        { "alternating-colour",
+            sol_rules::accordion_policy::RED_BLACK },
+        { "alternating_colour",
+            sol_rules::accordion_policy::RED_BLACK },
+        { "red-black", sol_rules::accordion_policy::RED_BLACK
+        },
+
+        { "any", sol_rules::accordion_policy::ANY_SUIT }
+    };
+
+    lower(str);
+    auto result = dict.find(str);
+
+    if (result == dict.end()) {
+        errx(EXIT_FAILURE, "unknown key '%s'", str);
+    }
+
+    return result->second;
+}
+
+sol_rules convert_rules(ms_rules *sr, user_data *d) {
     sol_rules r;
 
     r.tableau_pile_count = sr->tableau_size;
-    r.build_pol = convert_build_policy(sr->build_policy);
-    r.spaces_pol = convert_spaces_policy(sr->spaces_policy);
-    r.move_built_group = convert_built_group(sr->move_built_group);
-    r.built_group_pol = convert_build_policy(sr->built_group_policy);
+    r.build_pol = d->build_policy;
+    r.spaces_pol = d->spaces_policy;
+    r.move_built_group = d->move_built_group;
+    r.built_group_pol = d->built_group_policy;
     r.max_rank = sr->max_rank;
     r.hole = sr->hole_present;
-    r.hole_build_loops = sr->hole_build_loops;
+    r.hole_build_loops = d->hole_build_loops;
     r.foundations_present = sr->foundations_present;
     r.foundations_init_cards =
         convert_foundations_init(sr->foundations_init_cards);
-    r.foundations_removable = sr->foundations_removable;
-    r.foundations_only_comp_piles = sr->foundations_only_comp_piles;
+    r.foundations_removable = d->foundations_removable;
+    r.foundations_only_comp_piles = d->foundations_only_comp_piles;
     r.diagonal_deal = sr->diagonal_deal;
     r.cells = sr->cells;
     r.cells_pre_filled = sr->cells_pre_filled;
@@ -157,9 +275,9 @@ sol_rules convert_rules(ms_rules *sr) {
     r.reserve_stacked = sr->reserve_stacked;
     r.face_up = convert_face_up_policy(sr->face_up_policy);
     r.sequence_count = sr->sequence_count;
-    r.sequence_direction = convert_direction(sr->sequence_direction);
-    r.sequence_build_pol = convert_build_policy(sr->sequence_build_policy);
-    r.sequence_fixed_suit = sr->sequence_fixed_suit;
+    r.sequence_direction = d->sequence_direction;
+    r.sequence_build_pol = d->sequence_build_policy;
+    r.sequence_fixed_suit = d->sequence_fixed_suit;
     r.accordion_size = sr->accordion_size;
 
     assert(sr->deck_count <= 2);
@@ -171,13 +289,13 @@ sol_rules convert_rules(ms_rules *sr) {
         r.foundations_base = boost::none;
     }
 
-    for (auto &p : sr->accordion_moves) {
+    for (auto &p : d->accordion_moves) {
         r.accordion_moves.push_back(std::pair<sol_rules::direction, uint8_t>
-                (convert_direction(p.first), p.second));
+                (p.first, p.second));
     }
 
-    for (auto &x : sr->accordion_policy) {
-        r.accordion_pol.push_back(convert_accordion_policy(x));
+    for (auto &x : d->accordion_policy) {
+        r.accordion_pol.push_back(x);
     }
 
     return r;
@@ -278,7 +396,7 @@ void convert_game_state_pile_set(std::vector<ms_card_pile> *set,
  * 9. sequence piles
  */
 
-game_state convert_game_state(ms_game_state *sgs, ms_rules *r) {
+game_state convert_game_state(ms_game_state *sgs, ms_rules *r, user_data *d) {
     std::vector<std::vector<card::suit_t>> suits;
     std::vector<std::vector<card::rank_t>> ranks;
     std::vector<std::vector<bool>> face_down;
@@ -303,19 +421,12 @@ game_state convert_game_state(ms_game_state *sgs, ms_rules *r) {
     convert_game_state_pile_set(&sgs->tableau, &suits, &ranks, &face_down);
     // TODO: how does the sequence work? leaving empty for now
 
-    game_state gs(convert_rules(r), suits, ranks, face_down);
+    game_state gs(convert_rules(r, d), suits, ranks, face_down);
     return gs;
 }
 
-typedef struct user_data {
-    unsigned run_cache_size;
-    uint64_t run_timeout;
-    uint64_t run_node_limit;
-    const char *deal_seed_file;
-} user_data;
-
-void print_sgs(ms_game_state *gs, ms_rules *r) {
-    game_state solv_gs = convert_game_state(gs, r);
+void print_sgs(ms_game_state *gs, ms_rules *r, user_data *d) {
+    game_state solv_gs = convert_game_state(gs, r, d);
     std::cerr << solv_gs << std::endl;
 }
 
@@ -448,7 +559,7 @@ finished_state run_single(ms_game_state *gs, ms_rules *r,
 
     user_data *d = (user_data *) data;
 
-    game_state solv_gs = convert_game_state(gs, r);
+    game_state solv_gs = convert_game_state(gs, r, d);
 
     movelist ml;
 
@@ -536,7 +647,7 @@ finished_state run_single(ms_game_state *gs, ms_rules *r,
 finished_state thoughtful_run(ms_game_state *gs, ms_rules *r, void *data) {
     user_data *d = (user_data *) data;
 
-    game_state solv_gs = convert_game_state(gs, r);
+    game_state solv_gs = convert_game_state(gs, r, d);
     movelist ml;
     finished_state result;
     if (d->run_node_limit) {
@@ -550,10 +661,12 @@ finished_state thoughtful_run(ms_game_state *gs, ms_rules *r, void *data) {
     return result;
 }
 
-bool solved(ms_game_state *gs, ms_rules *r, void *d) {
-    print_sgs(gs, r);
+bool solved(ms_game_state *gs, ms_rules *r, void *data) {
+    user_data *d = (user_data *) data;
 
-    return convert_game_state(gs, r).is_solved();
+    print_sgs(gs, r, d);
+
+    return convert_game_state(gs, r, d).is_solved();
 }
 
 ms_settings get_settings(user_data *d) {
@@ -852,7 +965,9 @@ void json_settings(ms_settings *s, user_data *d, const char *filename) {
     free(tokens);
 }
 
-ms_rules json_rules(const char *filename) {
+ms_rules json_rules(const char *filename, ms_settings *s) {
+    user_data *d = (user_data *) s->user_data;
+
     FILE *f = fopen(filename, "rb");
     long length = filelen(f);
     char *buf = (char *) malloc(length);
@@ -915,9 +1030,9 @@ ms_rules json_rules(const char *filename) {
                 arp("hole-present", BOOL_TYPE, &r.hole_present);
                 arp("hole_present", BOOL_TYPE, &r.hole_present);
 
-                arp("hole build loops", BOOL_TYPE, &r.hole_build_loops);
-                arp("hole-build-loops", BOOL_TYPE, &r.hole_build_loops);
-                arp("hole_build_loops", BOOL_TYPE, &r.hole_build_loops);
+                arp("hole build loops", BOOL_TYPE, &d->hole_build_loops);
+                arp("hole-build-loops", BOOL_TYPE, &d->hole_build_loops);
+                arp("hole_build_loops", BOOL_TYPE, &d->hole_build_loops);
 
                 arp("foundations", BOOL_TYPE, &r.foundations_present);
                 arp("foundations present", BOOL_TYPE, &r.foundations_present);
@@ -925,24 +1040,24 @@ ms_rules json_rules(const char *filename) {
                 arp("foundations_present", BOOL_TYPE, &r.foundations_present);
 
                 arp("foundations removable", BOOL_TYPE,
-                        &r.foundations_removable);
+                        &d->foundations_removable);
                 arp("foundations-removable", BOOL_TYPE,
-                        &r.foundations_removable);
+                        &d->foundations_removable);
                 arp("foundations_removable", BOOL_TYPE,
-                        &r.foundations_removable);
+                        &d->foundations_removable);
 
                 arp("foundations accept only complete piles", BOOL_TYPE,
-                        &r.foundations_only_comp_piles);
+                        &d->foundations_only_comp_piles);
                 arp("foundations-accept-only-complete-piles", BOOL_TYPE,
-                        &r.foundations_only_comp_piles);
+                        &d->foundations_only_comp_piles);
                 arp("foundations_accept_only_complete_piles", BOOL_TYPE,
-                        &r.foundations_only_comp_piles);
+                        &d->foundations_only_comp_piles);
                 arp("foundations only complete pile moves", BOOL_TYPE,
-                        &r.foundations_only_comp_piles);
+                        &d->foundations_only_comp_piles);
                 arp("foundations-only-complete-pile-moves", BOOL_TYPE,
-                        &r.foundations_only_comp_piles);
+                        &d->foundations_only_comp_piles);
                 arp("foundations_only_complete_pile_moves", BOOL_TYPE,
-                        &r.foundations_only_comp_piles);
+                        &d->foundations_only_comp_piles);
 
                 arp("diagonal deal", BOOL_TYPE, &r.diagonal_deal);
                 arp("diagonal-deal", BOOL_TYPE, &r.diagonal_deal);
@@ -980,9 +1095,9 @@ ms_rules json_rules(const char *filename) {
                 arp("cards-in-sequence", NUMBER_TYPE, &r.sequence_count);
                 arp("cards_in_sequence", NUMBER_TYPE, &r.sequence_count);
 
-                arp("sequence fixed suit", BOOL_TYPE, &r.sequence_fixed_suit);
-                arp("sequence-fixed-suit", BOOL_TYPE, &r.sequence_fixed_suit);
-                arp("sequence_fixed_suit", BOOL_TYPE, &r.sequence_fixed_suit);
+                arp("sequence fixed suit", BOOL_TYPE, &d->sequence_fixed_suit);
+                arp("sequence-fixed-suit", BOOL_TYPE, &d->sequence_fixed_suit);
+                arp("sequence_fixed_suit", BOOL_TYPE, &d->sequence_fixed_suit);
 
                 /*
                  * FIXME
@@ -998,24 +1113,24 @@ ms_rules json_rules(const char *filename) {
                     if (x) break; \
                 }
 
-                are("build policy", str_build_policy, &r.build_policy);
-                are("build-policy", str_build_policy, &r.build_policy);
-                are("build_policy", str_build_policy, &r.build_policy);
+                are("build policy", str_build_policy, &d->build_policy);
+                are("build-policy", str_build_policy, &d->build_policy);
+                are("build_policy", str_build_policy, &d->build_policy);
 
-                are("spaces policy", str_spaces_policy, &r.spaces_policy);
-                are("spaces-policy", str_spaces_policy, &r.spaces_policy);
-                are("spaces_policy", str_spaces_policy, &r.spaces_policy);
+                are("spaces policy", str_spaces_policy, &d->spaces_policy);
+                are("spaces-policy", str_spaces_policy, &d->spaces_policy);
+                are("spaces_policy", str_spaces_policy, &d->spaces_policy);
 
-                are("move built group", str_built_group, &r.move_built_group);
-                are("move-built-group", str_built_group, &r.move_built_group);
-                are("move_built_group", str_built_group, &r.move_built_group);
+                are("move built group", str_built_group, &d->move_built_group);
+                are("move-built-group", str_built_group, &d->move_built_group);
+                are("move_built_group", str_built_group, &d->move_built_group);
 
                 are("group build policy", str_build_policy,
-                        &r.built_group_policy);
+                        &d->built_group_policy);
                 are("group-build-policy", str_build_policy,
-                        &r.built_group_policy);
+                        &d->built_group_policy);
                 are("group_build_policy", str_build_policy,
-                        &r.built_group_policy);
+                        &d->built_group_policy);
 
                 are("foundations initialised", str_foundations_init,
                         &r.foundations_init_cards);
@@ -1040,16 +1155,19 @@ ms_rules json_rules(const char *filename) {
                 are("face-up-policy", str_face_up_policy, &r.face_up_policy);
                 are("face_up_policy", str_face_up_policy, &r.face_up_policy);
 
-                are("sequence direction", str_direction, &r.sequence_direction);
-                are("sequence-direction", str_direction, &r.sequence_direction);
-                are("sequence_direction", str_direction, &r.sequence_direction);
+                are("sequence direction", str_direction,
+                        &d->sequence_direction);
+                are("sequence-direction", str_direction,
+                        &d->sequence_direction);
+                are("sequence_direction", str_direction,
+                        &d->sequence_direction);
 
                 are("sequence build policy", str_build_policy,
-                        &r.sequence_build_policy);
+                        &d->sequence_build_policy);
                 are("sequence-build-policy", str_build_policy,
-                        &r.sequence_build_policy);
+                        &d->sequence_build_policy);
                 are("sequence_build_policy", str_build_policy,
-                        &r.sequence_build_policy);
+                        &d->sequence_build_policy);
 
                 x = assign_foundations_base(tok, &r, buf);
                 if (x) {
@@ -1154,9 +1272,10 @@ ms_game_state make_game_state(ms_rules *r,
     }
 }
 
-ms_rules make_rules(std::map<std::string, docopt::value> &args) {
+ms_rules make_rules(std::map<std::string, docopt::value> &args,
+        ms_settings *s) {
     const char *filename = args["<rules_file>"].asString().c_str();
-    return json_rules(filename);
+    return json_rules(filename, s);
 }
 
 ms_settings make_settings(std::map<std::string, docopt::value> &args,
@@ -1199,7 +1318,7 @@ int main(int argc, char **argv) {
 
     user_data d = get_user_data();
     ms_settings s = make_settings(args, &d);
-    ms_rules r = make_rules(args);
+    ms_rules r = make_rules(args, &s);
 
     if (s.forever) {
         return ms_run_many(&r, &s);
