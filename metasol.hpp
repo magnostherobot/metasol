@@ -759,9 +759,34 @@ typedef struct {
     unsigned max_concurrent_games;
 
     /**
-     * How many votes are used to determine the next move.
+     * How many voters are initially used to determine the next move.
      */
-    unsigned vote_count;
+    unsigned initial_vote_count;
+
+    /**
+     * The number of voters to add to the voting pool each time voters are
+     * added.
+     */
+    unsigned vote_increase_step;
+
+    /**
+     * The magnitude with which to increase the number of voters being used each
+     * time voters are added.
+     *
+     * Applied after @ref vote_increase_step.
+     */
+    unsigned vote_increase_magnitude;
+
+    /**
+     * The maximum number of voters to use when determining the next move.
+     */
+    unsigned max_vote_count;
+
+    /**
+     * The ratio of votes required for a satisfying vote. This is honoured
+     * unless the max voter count has already been reached.
+     */
+    unsigned agree_ratio;
 
     /**
      * The seed used when shuffling face-down cards around.

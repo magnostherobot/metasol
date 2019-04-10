@@ -355,9 +355,13 @@ ms_settings fetch_default_settings() {
     s.user_data = NULL;
     s.max_concurrent_threads = 1u;
     s.max_concurrent_games = 1u;
-    s.vote_count = 100u;
-    s.forever = false;
+    s.initial_vote_count = 10u;
+    s.max_vote_count = 1000u;
+    s.vote_increase_step = 0u;
+    s.vote_increase_magnitude = 10u;
+    s.agree_ratio = 0;
     s.seed = 0u;
+    s.forever = false;
     return s;
 }
 
@@ -707,20 +711,25 @@ void move_decided(ms_game_state *gs, ms_rules *r, ms_move *move, vote *votes,
          * the only voters that don't need to recalculate their votes, the
          * other voters are reset.
          */
+        unsigned reset_count = 0u;
         for (unsigned i = 0; i < vote_count; ++i) {
             if (votes[i].result == SOLUTION_FOUND) {
                 if (equal_moves(move, &votes[i].moves.back())) {
                     votes[i].moves.pop_back();
                 } else {
-                    debug("voter %d is being reset\n", i);
+                    reset_count++;
                     votes[i].result = CANCELLED;
                 }
             }
         }
+        if (reset_count) {
+            debug("%u voters reset\n", reset_count);
+        }
+
     }
 }
 
-bool find_majority_move(vote *v, unsigned vote_count, ms_move *m) {
+bool find_majority_move(vote *v, unsigned vote_count, float r, ms_move *m) {
 
     std::map<ms_move, unsigned, votecmp> votes;
     for (unsigned i = 0; i < vote_count; ++i) {
@@ -731,15 +740,16 @@ bool find_majority_move(vote *v, unsigned vote_count, ms_move *m) {
             if (t == votes.end()) {
                 votes[move] = 1;
             } else {
-                unsigned x = t->second + 1;
-
-                if (x > vote_count / 2) {
-                    *m = t->first;
-                    return true;
-                } else {
-                    votes[move] = x;
-                }
+                votes[move] = t->second + 1;
             }
+        }
+    }
+
+    for (auto &vote : votes) {
+        float vr = ((float) vote.second) / ((float) vote_count);
+        if (vr > 0.5f) {
+            *m = vote.first;
+            return vr >= r;
         }
     }
 
@@ -750,9 +760,9 @@ typedef std::vector<std::future<void>> jobs;
 
 void run_new_voters(ms_game_state *gs, ms_rules *r, ms_settings *s,
         ctpl::thread_pool *thpool, ms_game_state *ss, vote *v, thread_info *ti,
-        jobs *fs, unsigned n) {
+        jobs *fs, unsigned vote_count, unsigned prev_vote_count) {
 
-    for (unsigned i = 0; i < n; ++i) {
+    for (unsigned i = prev_vote_count; i < vote_count; ++i) {
 
         /*
          * Move sequences that still represent the game need not be overwritten.
@@ -772,11 +782,17 @@ void run_new_voters(ms_game_state *gs, ms_rules *r, ms_settings *s,
     }
 }
 
-bool find_modal_move(vote *v, unsigned n, ms_move *m) {
+bool find_satisfying_modal_move(vote *v, unsigned n, float r, bool ignore_ratio,
+        ms_move *m) {
 
+    /*
+     * Group all votes by value.
+     */
     std::map<ms_move, unsigned, votecmp> votes;
+    unsigned success_count = 0u;
     for (unsigned i = 0; i < n; ++i) {
         if (v[i].result == SOLUTION_FOUND) {
+            success_count++;
             assert(!v[i].moves.empty());
 
             ms_move move = v[i].moves.back();
@@ -790,10 +806,14 @@ bool find_modal_move(vote *v, unsigned n, ms_move *m) {
         }
     }
 
+    /*
+     * Find most-occurring vote.
+     */
     struct { ms_move m; unsigned c; } max;
     max.c = 0;
 
     for (auto &vote : votes) {
+        debug("%s: %u votes\n", move_str_buf(&vote.first), vote.second);
         if (vote.second > max.c) {
             max.m = vote.first;
             max.c = vote.second;
@@ -801,6 +821,8 @@ bool find_modal_move(vote *v, unsigned n, ms_move *m) {
     }
 
     if (max.c == 0) {
+        return false;
+    } else if (((float) max.c) / ((float) success_count) < r && !ignore_ratio) {
         return false;
     } else {
         *m = max.m;
@@ -848,9 +870,6 @@ solve_status run_loop(ms_game_state *gs, ms_rules *r, ms_settings *s,
         ctpl::thread_pool *thpool, vote *votes, thread_info *t_infos,
         ms_game_state *shuffled_states) {
 
-    unsigned vote_count = s->vote_count;
-    ms_move m;
-
     /*
      * If there are no face-down cards, then any voter run should tell us if the
      * deal is solvable. This function is only entered if a voter found a
@@ -861,50 +880,56 @@ solve_status run_loop(ms_game_state *gs, ms_rules *r, ms_settings *s,
         return SOLVED;
     }
 
-    /*
-     * Set up the thread_info structs and add a job to the threadpool for each
-     * one.
-     */
-    jobs fs;
-    run_new_voters(gs, r, s, thpool, shuffled_states, votes, t_infos, &fs,
-            vote_count);
+    unsigned vote_count = s->initial_vote_count;
+    unsigned previous_vote_count = 0u;
+    float agree_frac = s->agree_ratio / 100.0f;
+    ms_move m;
 
     /*
-     * Wait on all of the voters to complete.
+     * Do this until a move is made
      */
-    for (auto &f : fs) {
-        assert(f.valid());
-        f.wait();
-    }
+    while (true) {
 
-    /*
-     * Print information about each voter.
-     */
-    debug( "%-15s %-10s %3s\n", "state", "move", "moves left");
-    for (unsigned i = 0; i < s->vote_count; ++i) {
-        if (votes[i].moves.empty()) {
-            debug("%-15s\n", finished_state_str(votes[i].result));
-        } else {
-            ms_move m = votes[i].moves.back();
-            debug("%-15s %-10s %3lu\n", finished_state_str(votes[i].result),
-                    move_str_buf(&m),
-                    votes[i].moves.size());
+        /*
+         * Set up the thread_info structs and add a job to the threadpool for
+         * each one.
+         */
+        jobs fs;
+        run_new_voters(gs, r, s, thpool, shuffled_states, votes, t_infos, &fs,
+                vote_count, previous_vote_count);
+
+        /*
+         * Wait on all of the voters to complete.
+         */
+        for (auto &f : fs) {
+            assert(f.valid());
+            f.wait();
         }
-    }
 
-    /*
-     * Find the move with the most votes.
-     */
-    if (find_modal_move(votes, vote_count, &m)) {
-        move_decided(gs, r, &m, votes, vote_count);
+        /*
+         * Find the move with the most votes, if it passes the required ratio.
+         */
+        if (find_satisfying_modal_move(votes, vote_count, agree_frac,
+                    vote_count == s->max_vote_count, &m)) {
+            debug("modal move found: %s\n", move_str_buf(&m));
+            move_decided(gs, r, &m, votes, vote_count);
+            break;
+        } else {
+            previous_vote_count = vote_count;
+            vote_count += s->vote_increase_step;
+            vote_count *= s->vote_increase_magnitude;
+            vote_count = std::min(vote_count, s->max_vote_count);
+            debug("modal move not found; using %u voters\n", vote_count);
+        }
+
     }
 
     /*
      * If a majority of voters already agree on a move, running other voters is
      * a waste of time.
      */
-    while (find_majority_move(votes, vote_count, &m)) {
-        debug("majority move found\n");
+    while (find_majority_move(votes, vote_count, agree_frac, &m)) {
+        debug("majority move found: %s\n", move_str_buf(&m));
         move_decided(gs, r, &m, votes, vote_count);
     }
 
@@ -914,13 +939,13 @@ solve_status run_loop(ms_game_state *gs, ms_rules *r, ms_settings *s,
 int ms_run(ms_game_state *gs, ms_rules *r, ms_settings *s,
         ctpl::thread_pool *tp) {
 
-    std::vector<vote> votes(s->vote_count);
+    std::vector<vote> votes(s->max_vote_count);
     for (vote &v : votes) {
         v.result = CANCELLED;
     }
 
-    std::vector<thread_info> t_infos(s->vote_count);
-    std::vector<ms_game_state> states(s->vote_count);
+    std::vector<thread_info> t_infos(s->max_vote_count);
+    std::vector<ms_game_state> states(s->max_vote_count);
 
     solve_status x;
     do {

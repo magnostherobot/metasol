@@ -9,7 +9,7 @@
 # define debug(...)
 #endif
 
-static inline char *move_str_buf(ms_move *m) {
+static inline char *move_str_buf(const ms_move *m) {
     static const int buf_size = 30;
     static char buf[buf_size];
     static char *buf_p = &buf[0];

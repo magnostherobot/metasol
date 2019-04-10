@@ -568,7 +568,11 @@ ms_settings get_settings(user_data *d) {
     s.reserved_move_count = 0u;
     s.max_concurrent_threads = 24u;
     s.max_concurrent_games = 5u;
-    s.vote_count = 10u;
+
+    s.initial_vote_count = 10u;
+    s.vote_increase_step = 100u;
+    s.max_vote_count = 1000u;
+    s.agree_ratio = 80u;
 
     s.user_data = (void *) d;
 
@@ -813,6 +817,29 @@ void json_settings(ms_settings *s, user_data *d, const char *filename) {
                 arp("run node limit", NUMBER_TYPE, &d->run_timeout);
                 arp("run_node_limit", NUMBER_TYPE, &d->run_timeout);
                 arp("run-node-limit", NUMBER_TYPE, &d->run_timeout);
+
+                arp("initial vote count", NUMBER_TYPE, &s->initial_vote_count);
+                arp("initial_vote_count", NUMBER_TYPE, &s->initial_vote_count);
+                arp("initial-vote-count", NUMBER_TYPE, &s->initial_vote_count);
+
+                arp("max vote count", NUMBER_TYPE, &s->max_vote_count);
+                arp("max_vote_count", NUMBER_TYPE, &s->max_vote_count);
+                arp("max-vote-count", NUMBER_TYPE, &s->max_vote_count);
+
+                arp("vote increase step", NUMBER_TYPE, &s->vote_increase_step);
+                arp("vote_increase_step", NUMBER_TYPE, &s->vote_increase_step);
+                arp("vote-increase-step", NUMBER_TYPE, &s->vote_increase_step);
+
+                arp("vote increase magnitude", NUMBER_TYPE,
+                        &s->vote_increase_magnitude);
+                arp("vote_increase_magnitude", NUMBER_TYPE,
+                        &s->vote_increase_magnitude);
+                arp("vote-increase-magnitude", NUMBER_TYPE,
+                        &s->vote_increase_magnitude);
+
+                arp("agree ratio", NUMBER_TYPE, &s->agree_ratio);
+                arp("agree_ratio", NUMBER_TYPE, &s->agree_ratio);
+                arp("agree-ratio", NUMBER_TYPE, &s->agree_ratio);
 
             } default: {
                 assert(false);
