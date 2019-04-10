@@ -698,6 +698,8 @@ user_data get_user_data() {
     d.run_cache_size = 1000000u;
     d.run_timeout = 20000u;
 
+    d.deal_seed_file = NULL;
+
     return d;
 }
 

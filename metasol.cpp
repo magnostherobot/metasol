@@ -717,6 +717,9 @@ solve_status run_loop(ms_game_state *gs, ms_rules *r, ms_settings *s,
             debug("modal move found: %s\n", move_str_buf(&m));
             move_decided(gs, r, &m, votes, vote_count);
             break;
+        } else if (vote_count == s->max_vote_count) {
+            debug("could not find any valid moves!\n");
+            return UNSOLVABLE;
         } else {
             previous_vote_count = vote_count;
             vote_count += s->vote_increase_step;
