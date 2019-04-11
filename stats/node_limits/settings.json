@@ -1,0 +1,10 @@
+{
+    "solve seed": 100,
+    "max concurrent games": 10,
+    "max concurrent threads": 20,
+    "initial vote count": 10,
+    "vote increase step": 0,
+    "vote increase magnitude": 5,
+    "max vote count": 1000,
+    "agree ratio": 80
+}

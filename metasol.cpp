@@ -290,8 +290,8 @@ int shuffle_hidden(ms_game_state *gs, ms_settings *s) {
     std::shuffle(hidden_cards.begin(), hidden_cards.end(), s->rng);
 
     for (__typeof__(hidden_cards.size()) i = 0; i < hidden_cards.size(); ++i) {
-        ms_card *cp = hidden_card_pointers[i];
-        ms_card c = hidden_cards[i];
+        ms_card *cp = hidden_card_pointers.at(i);
+        ms_card c = hidden_cards.at(i);
         *cp = c;
     }
 
@@ -306,7 +306,7 @@ ms_card_pile *get_pile_by_index(ms_game_state *gs, ms_rules *r, uint8_t i) {
     }
 
     if (i < gs->foundations.size()) {
-        return &gs->foundations[i];
+        return &gs->foundations.at(i);
     } else {
         i -= gs->foundations.size();
     }
@@ -330,7 +330,7 @@ ms_card_pile *get_pile_by_index(ms_game_state *gs, ms_rules *r, uint8_t i) {
     }
 
     if (i < gs->tableau.size()) {
-        return &gs->tableau[i];
+        return &gs->tableau.at(i);
     } else {
         i -= gs->tableau.size();
     }
@@ -488,8 +488,8 @@ bool opposite_move(ms_move *a, ms_move *b) {
     }
 }
 
-void move_decided(ms_game_state *gs, ms_rules *r, ms_move *move, vote *votes,
-        unsigned vote_count) {
+void move_decided(ms_game_state *gs, ms_rules *r, ms_move *move,
+        std::vector<vote> &votes, unsigned vote_count) {
 
     /*
      * If at least one vote is cast, the move with the most votes is taken.
@@ -504,7 +504,7 @@ void move_decided(ms_game_state *gs, ms_rules *r, ms_move *move, vote *votes,
          * Revealing a card means that all the voters have to be reset.
          */
         for (unsigned i = 0; i < vote_count; ++i) {
-            votes[i].result = CANCELLED;
+            votes.at(i).result = CANCELLED;
         }
     } else {
 
@@ -516,12 +516,12 @@ void move_decided(ms_game_state *gs, ms_rules *r, ms_move *move, vote *votes,
          */
         unsigned reset_count = 0u;
         for (unsigned i = 0; i < vote_count; ++i) {
-            if (votes[i].result == SOLUTION_FOUND) {
-                if (equal_moves(move, &votes[i].moves.back())) {
-                    votes[i].moves.pop_back();
+            if (votes.at(i).result == SOLUTION_FOUND) {
+                if (equal_moves(move, &votes.at(i).moves.back())) {
+                    votes.at(i).moves.pop_back();
                 } else {
                     reset_count++;
-                    votes[i].result = CANCELLED;
+                    votes.at(i).result = CANCELLED;
                 }
             }
         }
@@ -532,12 +532,13 @@ void move_decided(ms_game_state *gs, ms_rules *r, ms_move *move, vote *votes,
     }
 }
 
-bool find_majority_move(vote *v, unsigned vote_count, float r, ms_move *m) {
+bool find_majority_move(std::vector<vote> &v, unsigned vote_count, float r,
+        ms_move *m) {
 
     std::map<ms_move, unsigned, votecmp> votes;
     for (unsigned i = 0; i < vote_count; ++i) {
-        if (v[i].result == SOLUTION_FOUND && !v[i].moves.empty()) {
-            ms_move move = v[i].moves.back();
+        if (v.at(i).result == SOLUTION_FOUND && !v.at(i).moves.empty()) {
+            ms_move move = v.at(i).moves.back();
 
             auto t = votes.find(move);
             if (t == votes.end()) {
@@ -562,31 +563,32 @@ bool find_majority_move(vote *v, unsigned vote_count, float r, ms_move *m) {
 typedef std::vector<std::future<void>> jobs;
 
 void run_new_voters(ms_game_state *gs, ms_rules *r, ms_settings *s,
-        ctpl::thread_pool *thpool, ms_game_state *ss, vote *v, thread_info *ti,
-        jobs *fs, unsigned vote_count, unsigned prev_vote_count) {
+        ctpl::thread_pool *thpool, std::vector<ms_game_state> &ss,
+        std::vector<vote> &v, std::vector<thread_info> &ti, jobs *fs,
+        unsigned vote_count, unsigned prev_vote_count) {
 
     for (unsigned i = prev_vote_count; i < vote_count; ++i) {
 
         /*
          * Move sequences that still represent the game need not be overwritten.
          */
-        if (v[i].result != SOLUTION_FOUND || v[i].moves.empty()) {
-            ss[i] = *gs;
-            shuffle_hidden(&ss[i], s);
+        if (v.at(i).result != SOLUTION_FOUND || v.at(i).moves.empty()) {
+            ss.at(i) = *gs;
+            shuffle_hidden(&ss.at(i), s);
 
-            ti[i].gs = &ss[i];
-            ti[i].r = r;
-            ti[i].s = s;
-            ti[i].move_buf = &v[i].moves;
-            ti[i].result = &v[i].result;
+            ti.at(i).gs = &ss.at(i);
+            ti.at(i).r = r;
+            ti.at(i).s = s;
+            ti.at(i).move_buf = &v.at(i).moves;
+            ti.at(i).result = &v.at(i).result;
 
-            fs->push_back(thpool->push(run_thread, &ti[i]));
+            fs->push_back(thpool->push(run_thread, &ti.at(i)));
         }
     }
 }
 
-bool find_satisfying_modal_move(vote *v, unsigned n, float r, bool ignore_ratio,
-        ms_move *m) {
+bool find_satisfying_modal_move(std::vector<vote> &v, unsigned n, float r,
+        bool ignore_ratio, ms_move *m) {
 
     /*
      * Group all votes by value.
@@ -594,11 +596,11 @@ bool find_satisfying_modal_move(vote *v, unsigned n, float r, bool ignore_ratio,
     std::map<ms_move, unsigned, votecmp> votes;
     unsigned success_count = 0u;
     for (unsigned i = 0; i < n; ++i) {
-        if (v[i].result == SOLUTION_FOUND) {
+        if (v.at(i).result == SOLUTION_FOUND) {
             success_count++;
-            assert(!v[i].moves.empty());
+            assert(!v.at(i).moves.empty());
 
-            ms_move move = v[i].moves.back();
+            ms_move move = v.at(i).moves.back();
 
             auto t = votes.find(move);
             if (t == votes.end()) {
@@ -670,8 +672,10 @@ solve_status loop_check(ms_game_state *gs, ms_rules *r, ms_settings *s) {
 }
 
 solve_status run_loop(ms_game_state *gs, ms_rules *r, ms_settings *s,
-        ctpl::thread_pool *thpool, vote *votes, thread_info *t_infos,
-        ms_game_state *shuffled_states) {
+        ctpl::thread_pool *thpool,
+        std::vector<vote> &votes,
+        std::vector<thread_info> &t_infos,
+        std::vector<ms_game_state> &shuffled_states) {
 
     /*
      * If there is exactly zero or one face-down cards, then any voter run
@@ -755,7 +759,7 @@ int ms_run(ms_game_state *gs, ms_rules *r, ms_settings *s,
 
     solve_status x;
     do {
-        x = run_loop(gs, r, s, tp, &votes[0], t_infos.data(), states.data());
+        x = run_loop(gs, r, s, tp, votes, t_infos, states);
     } while (x == KEEP_GOING);
 
     printf("solveseed: %lu\tdealseed: %lu\tsuccess: %s\n", s->seed, gs->seed,
@@ -833,7 +837,8 @@ int ms_run_from_file(ms_rules *r, ms_settings *s, const char *filename,
         fs.push_back(main_tp.push(ms_run_id, seed, r, s, tp));
     }
 
-    main_thread_pool = &main_tp;
+    fclose(fp);
+    free(line);
 
     /*
      * these will run forever, unless stopped by ^C
@@ -842,9 +847,6 @@ int ms_run_from_file(ms_rules *r, ms_settings *s, const char *filename,
         assert(f.valid());
         f.wait();
     }
-
-    fclose(fp);
-    free(line);
 
     return 0;
 }
@@ -951,7 +953,7 @@ ms_game_state random_game_state(long user_seed, ms_rules *r) {
                     deck.pop_back();
                 }
                 c.hidden = false;
-                gs.foundations[0].push_back(c);
+                gs.foundations.at(0).push_back(c);
                 break;
             } case ALL_FOUNDATIONS_INIT: {
                 if (r->specific_foundations_base) {
@@ -962,7 +964,7 @@ ms_game_state random_game_state(long user_seed, ms_rules *r) {
                             c.suit = SUITS[j];
                             c.rank = r->foundations_base;
                             c.hidden = false;
-                            gs.foundations[i * 4 + j].push_back(c);
+                            gs.foundations.at(i * 4 + j).push_back(c);
                         }
                     }
                 } else {
@@ -1016,9 +1018,9 @@ ms_game_state random_game_state(long user_seed, ms_rules *r) {
                     ms_card c = deck.back();
                     c.hidden = r->face_up_policy != ALL_CARDS_FACE_UP;
                     deck.pop_back();
-                    gs.tableau[i].push_back(c);
+                    gs.tableau.at(i).push_back(c);
                 }
-                gs.tableau[i].back().hidden = false;
+                gs.tableau.at(i).back().hidden = false;
             }
         } else {
             unsigned deep = deck.size() / r->tableau_size;

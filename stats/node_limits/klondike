@@ -1,0 +1,14 @@
+tableau-size: 7
+build-policy: red-black
+spaces-policy: kings
+move-built-group: yes
+group-build-policy: red-black
+
+diagonal-deal: true
+face-up-policy: top
+
+foundations-removable: true
+
+cards-in-stock: 24
+stock-deal-count: 3
+stock-redeal: true
