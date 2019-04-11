@@ -700,6 +700,19 @@ user_data get_user_data() {
 
     d.deal_seed_file = NULL;
 
+    d.build_policy = sol_rules::build_policy::ANY_SUIT;
+    d.spaces_policy = sol_rules::spaces_policy::ANY;
+    d.move_built_group = sol_rules::built_group_type::NO;
+    d.built_group_policy = sol_rules::build_policy::ANY_SUIT;
+    d.hole_build_loops = true;
+    d.foundations_removable = false;
+    d.foundations_only_comp_piles = false;
+    d.sequence_direction = sol_rules::direction::LEFT;
+    d.sequence_build_policy = sol_rules::build_policy::ANY_SUIT;
+    d.sequence_fixed_suit = false;
+    /* d.accordion_moves is initialised as an empty vector */
+    /* d.accordion_policy is initialised as an empty vector */
+
     return d;
 }
 
