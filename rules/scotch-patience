@@ -1,0 +1,7 @@
+#!centre
+
+tableau-size: 18
+build-policy: red-black
+spaces-policy: no-build
+
+foundations-removable: true

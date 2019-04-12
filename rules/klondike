@@ -3,7 +3,7 @@
 tableau-size: 7
 build-policy: red-black
 spaces-policy: kings
-move-built-group: yes
+move-built-group: "partial if card above buildable"
 group-build-policy: red-black
 
 diagonal-deal: true

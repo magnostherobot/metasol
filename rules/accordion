@@ -1,0 +1,6 @@
+foundations-present: false
+tableau-size: 0
+
+accordion-size: 52
+accordion-moves: [ "L1", "L3" ]
+accordion-build-policies: [ "same-suit", "same-suit" ]

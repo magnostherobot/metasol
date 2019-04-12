@@ -1,0 +1,10 @@
+#!centre
+
+foundations-present: false
+
+tableau-size: 0
+
+sequence-build-policy: same-suit
+sequence-size: 4
+sequence-direction: left
+sequence-fixed-suit: false

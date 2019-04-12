@@ -1,0 +1,8 @@
+#!centre
+
+tableau-size: 12
+build-policy: same-suit
+group-build-policy: same-suit
+move-built-group: yes
+
+foundations-initialised: all

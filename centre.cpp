@@ -12,6 +12,11 @@
 #include "debug.h"
 
 typedef struct {
+    int count;
+    sol_rules::direction direction;
+} accordion_move;
+
+typedef struct {
     unsigned run_cache_size;
     uint64_t run_timeout;
     uint64_t run_node_limit;
@@ -27,8 +32,8 @@ typedef struct {
     sol_rules::direction sequence_direction;
     sol_rules::build_policy sequence_build_policy;
     bool sequence_fixed_suit;
-    std::vector<std::pair<sol_rules::direction, uint8_t>> accordion_moves;
-    std::vector<sol_rules::accordion_policy> accordion_policy;
+    std::vector<accordion_move> accordion_moves;
+    std::vector<sol_rules::accordion_policy> accordion_policies;
 } user_data;
 
 static const char USAGE[] =
@@ -201,7 +206,10 @@ sol_rules::built_group_type str_built_group(char *str) {
         { "whole pile", sol_rules::built_group_type::WHOLE_PILE },
 
         { "maximal group only", sol_rules::built_group_type::MAXIMAL_GROUP },
-        { "maximal", sol_rules::built_group_type::MAXIMAL_GROUP }
+        { "maximal", sol_rules::built_group_type::MAXIMAL_GROUP },
+
+        { "partial if card above buildable",
+            sol_rules::built_group_type::PARTIAL_IF_CARD_ABOVE_BUILDABLE },
     };
 
     lower(str);
@@ -291,10 +299,10 @@ sol_rules convert_rules(ms_rules *sr, user_data *d) {
 
     for (auto &p : d->accordion_moves) {
         r.accordion_moves.push_back(std::pair<sol_rules::direction, uint8_t>
-                (p.first, p.second));
+                (p.direction, p.count));
     }
 
-    for (auto &x : d->accordion_policy) {
+    for (auto &x : d->accordion_policies) {
         r.accordion_pol.push_back(x);
     }
 
@@ -980,6 +988,61 @@ void json_settings(ms_settings *s, user_data *d, const char *filename) {
     free(tokens);
 }
 
+int assign_accordion_moves(jsmntok_t *key, const char *name,
+        std::vector<accordion_move> *rule, char *js) {
+    long length = key->end - key->start;
+    char *key_str = &js[key->start];
+    if (!strncmp(key_str, name, length)) {
+        jsmntok_t *val = next_tok(key);
+        assert(val->type == JSMN_ARRAY);
+        rule->clear();
+
+        jsmntok_t *t = val;
+        for (int i = 0; i < val->size; ++i) {
+            t = next_tok(t);
+            assert(t->type == JSMN_STRING);
+            accordion_move am;
+            am.count = js[t->start+1] - '0';
+
+            char dir = js[t->start];
+            assert(dir == 'L' || dir == 'R');
+            am.direction = dir == 'L' ?
+                sol_rules::direction::LEFT : sol_rules::direction::RIGHT;
+            rule->push_back(am);
+        }
+
+        return 2 + val->size;
+    } else {
+        return 0;
+    }
+}
+
+int assign_accordion_policies(jsmntok_t *key, const char *name,
+        std::vector<sol_rules::accordion_policy> *rule, char *js) {
+    long length = key->end - key->start;
+    char *key_str = &js[key->start];
+    if (!strncmp(key_str, name, length)) {
+        jsmntok_t *val = next_tok(key);
+        assert(val->type == JSMN_ARRAY);
+        rule->clear();
+
+        jsmntok_t *t = val;
+        for (int i = 0; i < val->size; ++i) {
+            t = next_tok(t);
+            assert(t->type == JSMN_STRING);
+
+            char buf[50];
+            strncpy(&buf[0], &js[t->start], t->end - t->start);
+            buf[t->end - t->start] = '\0';
+            rule->push_back(str_accordion_policy(&buf[0]));
+        }
+
+        return 2 + val->size;
+    } else {
+        return 0;
+    }
+}
+
 ms_rules json_rules(const char *filename, ms_settings *s) {
     user_data *d = (user_data *) s->user_data;
 
@@ -1094,6 +1157,9 @@ ms_rules json_rules(const char *filename, ms_settings *s) {
                 arp("stock-deal-count", NUMBER_TYPE, &r.stock_deal_count);
                 arp("stock_deal_count", NUMBER_TYPE, &r.stock_deal_count);
 
+                arp("stock redeal", BOOL_TYPE, &r.stock_redeal);
+                arp("stock-redeal", BOOL_TYPE, &r.stock_redeal);
+                arp("stock_redeal", BOOL_TYPE, &r.stock_redeal);
                 arp("stock redeal allowed", BOOL_TYPE, &r.stock_redeal);
                 arp("stock-redeal-allowed", BOOL_TYPE, &r.stock_redeal);
                 arp("stock_redeal_allowed", BOOL_TYPE, &r.stock_redeal);
@@ -1113,6 +1179,10 @@ ms_rules json_rules(const char *filename, ms_settings *s) {
                 arp("sequence fixed suit", BOOL_TYPE, &d->sequence_fixed_suit);
                 arp("sequence-fixed-suit", BOOL_TYPE, &d->sequence_fixed_suit);
                 arp("sequence_fixed_suit", BOOL_TYPE, &d->sequence_fixed_suit);
+
+                arp("accordion size", NUMBER_TYPE, &r.accordion_size);
+                arp("accordion-size", NUMBER_TYPE, &r.accordion_size);
+                arp("accordion_size", NUMBER_TYPE, &r.accordion_size);
 
                 /*
                  * FIXME
@@ -1184,6 +1254,26 @@ ms_rules json_rules(const char *filename, ms_settings *s) {
                 are("sequence_build_policy", str_build_policy,
                         &d->sequence_build_policy);
 
+                x = assign_accordion_moves(tok, "accordion moves",
+                        &d->accordion_moves, buf);
+                if (x) break;
+                x = assign_accordion_moves(tok, "accordion-moves",
+                        &d->accordion_moves, buf);
+                if (x) break;
+                x = assign_accordion_moves(tok, "accordion_moves",
+                        &d->accordion_moves, buf);
+                if (x) break;
+
+                x = assign_accordion_policies(tok, "accordion build policies",
+                        &d->accordion_policies, buf);
+                if (x) break;
+                x = assign_accordion_policies(tok, "accordion-build-policies",
+                        &d->accordion_policies, buf);
+                if (x) break;
+                x = assign_accordion_policies(tok, "accordion_build_policies",
+                        &d->accordion_policies, buf);
+                if (x) break;
+
                 x = assign_foundations_base(tok, &r, buf);
                 if (x) {
                     break;
@@ -1191,6 +1281,7 @@ ms_rules json_rules(const char *filename, ms_settings *s) {
 
                 debug("%s\n", &buf[tok->start]);
                 assert(false);
+
             } default: {
                 assert(false);
             }

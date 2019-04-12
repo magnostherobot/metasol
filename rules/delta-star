@@ -1,0 +1,5 @@
+tableau-size: 12
+build-policy: same-suit
+group-build-policy: same-suit
+
+foundations-initialised: all

@@ -242,10 +242,11 @@ void add_hidden(ms_card *c, std::vector<ms_card *> &cs) {
  * Fills a vector with pointers to all hidden cards in the given game state.
  */
 int get_hidden_cards(ms_game_state *gs, std::vector<ms_card *> &cs) {
-    // TODO: include cells, accordion
-    for (auto &c : gs->stock)   add_hidden(&c, cs);
-    for (auto &c : gs->waste)   add_hidden(&c, cs);
-    for (auto &c : gs->reserve) add_hidden(&c, cs);
+    // TODO: include cells
+    for (auto &c : gs->stock)     add_hidden(&c, cs);
+    for (auto &c : gs->waste)     add_hidden(&c, cs);
+    for (auto &c : gs->reserve)   add_hidden(&c, cs);
+    for (auto &c : gs->accordion) add_hidden(&c, cs);
 
     for (ms_card_pile &p : gs->foundations)
         for (ms_card &c : p)
@@ -275,7 +276,7 @@ unsigned total_pile_count(ms_rules *r) {
         + (r->reserve_size > 0 ? 1 : 0)
     ;
 
-    // TODO: I'm not sure how the sequence, or accordion work;
+    // TODO: I'm not sure how the sequence works;
     // research required!
 }
 
@@ -1007,7 +1008,16 @@ ms_game_state random_game_state(long user_seed, ms_rules *r) {
         gs.reserve.back().hidden = false;
     }
 
-    // TODO: cells, accordion
+    // TODO: cells
+
+    if (r->accordion_size) {
+        for (unsigned i = 0; i < r->accordion_size; ++i) {
+            ms_card c = deck.back();
+            c.hidden = false;
+            deck.pop_back();
+            gs.accordion.push_back(c);
+        }
+    }
 
     if (r->tableau_size) {
         gs.tableau.resize(r->tableau_size);

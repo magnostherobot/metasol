@@ -14,6 +14,7 @@
 #ifndef METASOL_H
 #define METASOL_H
 
+#include <list>
 #include <vector>
 #include <random>
 
@@ -363,6 +364,7 @@ typedef struct {
     ms_card_pile hole;
     std::vector<ms_card_pile> cells;
     ms_card_pile reserve;
+    std::list<ms_card> accordion;
 
     /**
      * The seed used for random generation of the game-state.

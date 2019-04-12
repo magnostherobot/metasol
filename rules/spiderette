@@ -1,0 +1,13 @@
+#!centre
+
+tableau-size: 7
+build-policy: any-suit
+move-built-group: yes
+group-build-policy: same-suit
+diagonal-deal: true
+face-up-policy: top
+
+foundations-only-complete-pile-moves: true
+
+cards-in-stock: 24
+stock-deal-type: stock-to-tableau
